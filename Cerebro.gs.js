@@ -36,12 +36,17 @@ function extrairDadosComIA(textoMarkdown) {
     const response = UrlFetchApp.fetch(url, options);
     const jsonResponse = JSON.parse(response.getContentText());
     
+    if (jsonResponse.error) {
+      Logger.log("Erro na API Gemini: " + jsonResponse.error.message);
+      return null;
+    }
+    
     // Extrai a resposta da IA
-    if (jsonResponse.candidates && jsonResponse.candidates.length > 0) {
+    if (jsonResponse.candidates && jsonResponse.candidates.length > 0 && jsonResponse.candidates[0].content && jsonResponse.candidates[0].content.parts && jsonResponse.candidates[0].content.parts.length > 0) {
       const textoGerado = jsonResponse.candidates[0].content.parts[0].text;
       return JSON.parse(textoGerado);
     } else {
-      Logger.log("Erro na estrutura de resposta do Gemini: " + response.getContentText());
+      Logger.log("Erro na estrutura de resposta do Gemini: estrutura inesperada");
       return null;
     }
     

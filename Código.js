@@ -60,8 +60,13 @@ function doPost(e) {
 function getTelegramFile(fileId) {
   const config = getConfig_();
   const resp = UrlFetchApp.fetch(`https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
-  const path = JSON.parse(resp.getContentText()).result.file_path;
-  return `https://api.telegram.org/file/bot${config.TELEGRAM_TOKEN}/${path}`;
+  const json = JSON.parse(resp.getContentText());
+  
+  if (!json.ok || !json.result || !json.result.file_path) {
+    throw new Error('Erro ao obter arquivo do Telegram: ' + JSON.stringify(json));
+  }
+  
+  return `https://api.telegram.org/file/bot${config.TELEGRAM_TOKEN}/${json.result.file_path}`;
 }
 
 function pedirAoGemini(blob) {
@@ -87,18 +92,26 @@ function pedirAoGemini(blob) {
   const res = UrlFetchApp.fetch(url, options);
   const json = JSON.parse(res.getContentText());
 
-  if (json.candidates && json.candidates[0].content) {
+  if (json.error) {
+    throw new Error("Erro na API Gemini: " + json.error.message);
+  }
+  
+  if (json.candidates && json.candidates.length > 0 && json.candidates[0].content && json.candidates[0].content.parts && json.candidates[0].content.parts.length > 0) {
     return json.candidates[0].content.parts[0].text;
   } else {
-    throw new Error("Erro no Gemini 2.5: " + (json.error ? json.error.message : "Resposta inesperada"));
+    throw new Error("Resposta inválida do Gemini: estrutura inesperada");
   }
 }
 
 function salvarNoDrive(conteudo) {
   const config = getConfig_();
-  const pasta = DriveApp.getFolderById(config.FOLDER_ID);
-  const nome = `Nota_${Utilities.formatDate(new Date(), "GMT-3", "yyyy-MM-dd_HHmm")}.md`;
-  pasta.createFile(nome, conteudo, MimeType.PLAIN_TEXT);
+  try {
+    const pasta = DriveApp.getFolderById(config.FOLDER_ID);
+    const nome = `Nota_${Utilities.formatDate(new Date(), "GMT-3", "yyyy-MM-dd_HHmm")}.md`;
+    pasta.createFile(nome, conteudo, MimeType.PLAIN_TEXT);
+  } catch (erro) {
+    throw new Error("Erro ao salvar no Drive: " + erro.toString());
+  }
 }
 
 function enviarResposta(chatId, texto) {
@@ -110,13 +123,21 @@ function listarModelosDisponiveis() {
   const config = getConfig_();
   const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${config.GEMINI_API_KEY}`;
   
-  const response = UrlFetchApp.fetch(url);
-  const json = JSON.parse(response.getContentText());
-  
-  // Isso vai imprimir a lista no console do Google
-  json.models.forEach(model => {
-    console.log("Nome do Modelo: " + model.name + " | Suporta Áudio: " + model.supportedGenerationMethods.includes("generateContent"));
-  });
+  try {
+    const response = UrlFetchApp.fetch(url);
+    const json = JSON.parse(response.getContentText());
+    
+    if (!json.models || !Array.isArray(json.models)) {
+      throw new Error("Resposta inválida: modelos não encontrados");
+    }
+    
+    json.models.forEach(model => {
+      const suportaAudio = model.supportedGenerationMethods && model.supportedGenerationMethods.includes("generateContent");
+      console.log("Nome do Modelo: " + model.name + " | Suporta Áudio: " + suportaAudio);
+    });
+  } catch (erro) {
+    Logger.log("Erro ao listar modelos: " + erro.toString());
+  }
 }
 
 function limparFilaTelegram() {

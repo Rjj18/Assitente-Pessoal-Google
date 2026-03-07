@@ -4,22 +4,32 @@
  */
 function listarNovosArquivosMarkdown() {
   const config = getConfig_();
-  const pastaEntrada = DriveApp.getFolderById(config.FOLDER_ID);
-  const arquivos = pastaEntrada.getFilesByType(MimeType.PLAIN_TEXT); 
   const listaDeProcessamento = [];
 
-  while (arquivos.hasNext()) {
-    const arquivo = arquivos.next();
+  try {
+    const pastaEntrada = DriveApp.getFolderById(config.FOLDER_ID);
+    const arquivos = pastaEntrada.getFilesByType(MimeType.PLAIN_TEXT);
     
-    if (arquivo.getName().toLowerCase().endsWith('.md')) {
-      listaDeProcessamento.push({
-        id: arquivo.getId(),
-        nome: arquivo.getName(),
-        conteudo: arquivo.getBlob().getDataAsString()
-      });
+    while (arquivos.hasNext()) {
+      const arquivo = arquivos.next();
+      
+      if (arquivo.getName().toLowerCase().endsWith('.md')) {
+        try {
+          listaDeProcessamento.push({
+            id: arquivo.getId(),
+            nome: arquivo.getName(),
+            conteudo: arquivo.getBlob().getDataAsString()
+          });
+        } catch (erroArquivo) {
+          Logger.log("Erro ao ler arquivo " + arquivo.getName() + ": " + erroArquivo.toString());
+        }
+      }
     }
+    
+    Logger.log('Arquivos .md encontrados: ' + listaDeProcessamento.length);
+  } catch (erro) {
+    Logger.log("Erro ao listar arquivos na pasta: " + erro.toString());
   }
   
-  Logger.log('Arquivos .md encontrados: ' + listaDeProcessamento.length);
   return listaDeProcessamento;
 }
