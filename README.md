@@ -1,4 +1,4 @@
-# 🎙️ Agente Voz Roger
+# 🎙️ Assistente Pessoal Google
 
 Um assistente inteligente baseado em Google Apps Script que processa notas de voz via Telegram, enriquece com IA (Gemini) e organiza automaticamente no Google Drive.
 
@@ -28,8 +28,8 @@ Transforme seus pensamentos diretos em notas estruturadas, tarefas e eventos —
 ### 1. Clonar e Configurar o Projeto
 
 ```bash
-git clone https://github.com/seu-usuario/Agente_Voz_Roger.git
-cd Agente_Voz_Roger
+git clone https://github.com/Rjj18/Assitente-Pessoal-Google.git
+cd Assitente-Pessoal-Google
 ```
 
 ### 2. Configurar Google Apps Script
@@ -168,7 +168,7 @@ const prompt = `Você é um assistente médico. Processe as anotações abaixo e
 ## 📂 Estrutura do Projeto
 
 ```
-Agente_Voz_Roger/
+Assitente-Pessoal-Google/
 ├── Código.js              # Handler principal (webhook do Telegram)
 ├── Cerebro.gs.js          # Lógica de processamento com Gemini
 ├── Scanner.gs.js          # Integração com Google Drive
@@ -269,16 +269,16 @@ MIT License — Sinta-se livre para usar, modificar e distribuir.
 
 ## 👤 Autor
 
-Desenvolvido por Roger — um projeto de automação inteligente com ❤️
+Desenvolvido com ❤️ — um projeto de automação inteligente para produtividade pessoal
 
 ---
 
 **Pronto para começar?**
 
 ```bash
-git clone https://github.com/seu-usuario/Agente_Voz_Roger.git
-cd Agente_Voz_Roger
+git clone https://github.com/Rjj18/Assitente-Pessoal-Google.git
+cd Assitente-Pessoal-Google
 # Configure as Script Properties e faça deploy!
 ```
 
-Perguntas? Abra uma [issue](https://github.com/seu-usuario/Agente_Voz_Roger/issues) 🎉
+Perguntas? Abra uma [issue](https://github.com/Rjj18/Assitente-Pessoal-Google/issues) 🎉
