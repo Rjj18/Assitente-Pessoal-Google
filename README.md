@@ -8,8 +8,8 @@ Transforme seus pensamentos diretos em notas estruturadas, tarefas e eventos —
 
 ## ✨ O que faz
 
-- **📱 Recebe voz pelo Telegram** — Envie notas de voz diretamente para o bot
-- **🧠 Processa com Gemini** — Transcreve, corrige gramática e estrutura em Markdown
+- **📱 Recebe voz e texto pelo Telegram** — Envie notas de voz ou mensagens de texto diretamente para o bot
+- **🧠 Processa com Gemini** — Transcreve áudio, estrutura texto e formata tudo em Markdown
 - **📊 Extrai dados estruturados** — Identifica automaticamente tarefas, notas e eventos
 - **💾 Salva no Drive/Obsidian** — Organiza tudo em uma pasta de seu Google Drive
 - **⚙️ Configurável** — Ajuste prompts para qualquer tipo de assistente
@@ -109,10 +109,18 @@ https://api.telegram.org/bot[TELEGRAM_TOKEN]/setWebhook?url=[WEBHOOK_URL]
 ### Enviar uma nota de voz
 
 1. Abra seu bot no Telegram
-2. Envie uma nota de voz (ou áudio)
-3. O bot responde: "⏳ Recebido! O Opal (Gemini) está processando sua voz..."
-4. A nota é processada e salva no Drive
-5. Confirmação: "✅ Nota estruturada e salva no Obsidian!"
+2. Envie uma nota de voz (ou arquivo de áudio)
+3. O bot responde: "⏳ Recebido! Processando sua voz..."
+4. A nota é transcrita, estruturada e salva no Drive
+5. Confirmação: "✅ Nota salva com sucesso!"
+
+### Enviar uma mensagem de texto
+
+1. Abra seu bot no Telegram
+2. Digite ou cole qualquer texto (ideias, anotações, tarefas)
+3. O bot responde: "⏳ Estruturando sua mensagem..."
+4. O texto é organizado em Markdown e salvo no Drive
+5. Confirmação: "✅ Nota salva com sucesso!"
 
 ### Testar localmente
 
@@ -130,37 +138,51 @@ Executa no console do Apps Script e verifica:
 
 ## 🎯 Customizar para Outros Assistentes
 
-Os prompts são facilmente ajustáveis para qualquer tipo de assistente. Edite as funções:
-
-### Para um Assistente de Código
-
-Em `Código.js`, função `pedirAoGemini()`:
+Os prompts são facilmente ajustáveis para qualquer tipo de assistente. Edite as constantes em `Código.js`:
 
 ```javascript
-{ 
-  text: "Você é um expert em programação. Analise este áudio e gere snippets de código comentados em [LINGUAGEM]." 
-}
+const PROMPTS = {
+  AUDIO: "Seu prompt para processar áudio",
+  TEXTO: "Seu prompt para processar texto"
+};
 ```
 
-### Para um Assistente de Saúde
+### Exemplos de Customização
 
-Em `Cerebro.gs.js`, função `extrairDadosComIA()`:
+#### Para um Assistente de Código
 
 ```javascript
-const prompt = `Você é um assistente médico. Processe as anotações abaixo e estruture em:
-  {
-    "sintomas": [...],
-    "medicamentos": [...],
-    "consultas_agendadas": [...]
-  }`;
+const PROMPTS = {
+  AUDIO: "Você é um expert em programação. Transcreva este áudio e gere snippets de código comentados em Python.",
+  TEXTO: "Você é um expert em programação. Analise este código/descrição e formate em Markdown com syntax highlighting:\n\n"
+};
 ```
 
-### Para um Assistente de Criatividade
+#### Para um Assistente de Saúde/Fitness
 
 ```javascript
-{ 
-  text: "Você é um escritor criativo. Transcreva este áudio e expanda em uma história com elementos de ficção científica." 
-}
+const PROMPTS = {
+  AUDIO: "Você é um personal trainer. Transcreva esta descrição do treino e organize em formato Markdown com séries, repetições e observações.",
+  TEXTO: "Você é um nutricionista. Estruture estas informações alimentares em Markdown com tabela nutricional e recomendações:\n\n"
+};
+```
+
+#### Para um Assistente de Criatividade
+
+```javascript
+const PROMPTS = {
+  AUDIO: "Você é um escritor criativo. Transcreva este áudio e expanda em uma história com elementos de ficção científica.",
+  TEXTO: "Você é um roteirista. Transforme esta sinopse em um roteiro estruturado em Markdown com cenas e diálogos:\n\n"
+};
+```
+
+#### Para um Assistente de Estudo
+
+```javascript
+const PROMPTS = {
+  AUDIO: "Você é um professor. Transcreva esta aula e crie um resumo com tópicos principais, conceitos-chave e exercícios.",
+  TEXTO: "Você é um revisor pedagógico. Organize estas anotações de estudo em Markdown com hierarquia de tópicos e flashcards:\n\n"
+};
 ```
 
 ---
@@ -180,36 +202,59 @@ Assitente-Pessoal-Google/
 ### Fluxo de Processamento
 
 ```
-Telegram (voz/áudio)
+Telegram (voz/áudio/texto)
         ↓
     doPost() [Código.js]
         ↓
-getTelegramFile() → Download do arquivo
-        ↓
-pedirAoGemini() → Transcrição + formatação
-        ↓
-extrairDadosComIA() [Cerebro.gs.js] → Estruturação
-        ↓
-salvarNoDrive() [Scanner.gs.js] → Armazenamento
-        ↓
-enviarResposta() → Confirmação no Telegram
+   ┌────────────────┐
+   │ Tipo: Áudio?   │
+   └────┬───────┬───┘
+        │       │
+    Sim │       │ Não (Texto)
+        │       │
+        ↓       ↓
+getTelegramFile() → processarMensagemTexto_()
+        ↓               ↓
+processarComGemini_() → processarTextoComGemini_()
+        ↓               ↓
+        └───────┬───────┘
+                ↓
+        salvarNoDrive()
+                ↓
+        enviarResposta() → Confirmação no Telegram
 ```
+
+### Arquitetura do Código
+
+O código foi refatorado seguindo princípios de **Clean Code**:
+
+- **Separação de responsabilidades**: Cada função tem um propósito único
+- **Constantes centralizadas**: Mensagens e prompts em objetos imutáveis
+- **Nomenclatura descritiva**: Funções privadas terminam com `_`
+- **Tratamento de erros robusto**: Validações e logs em todas as camadas
+- **Modularização**: Código organizado por seções (Config, API, Drive, etc.)
 
 ---
 
 ## 🔧 Funções Principais
 
 ### `doPost(e)`
-Handler principal que recebe webhooks do Telegram. Identifica mensagens de voz e inicia o pipeline.
+Handler principal que recebe webhooks do Telegram. Identifica o tipo de mensagem (voz/audio/texto) e roteia para o processador adequado.
 
-### `pedirAoGemini(blob)`
-Envia áudio para a Gemini API com prompt customizável. Retorna texto estruturado.
+### `processarMensagemAudio_(chatId, message)`
+Baixa o áudio do Telegram, envia para Gemini com prompt específico e salva o resultado.
 
-### `extrairDadosComIA(textoMarkdown)`
-Processa o texto com Gemini para extrair informações estruturadas (tarefas, notas, eventos).
+### `processarMensagemTexto_(chatId, message)`
+Processa mensagens de texto diretamente com Gemini usando prompt de estruturação.
+
+### `processarComGemini_(audioBlob, promptTexto)`
+Envia áudio para a Gemini API. Retorna texto transcrito e formatado.
+
+### `processarTextoComGemini_(texto)`
+Envia texto para a Gemini API. Retorna conteúdo estruturado em Markdown.
 
 ### `salvarNoDrive(conteudo)`
-Cria um arquivo `.md` na pasta configurada com a data/hora como nome.
+Cria um arquivo `.md` na pasta configurada com timestamp como nome.
 
 ### `listarNovosArquivosMarkdown()`
 Varre a pasta Drive e retorna todos os `.md` para processamento em lote.
@@ -253,11 +298,15 @@ const botToken = config.TELEGRAM_TOKEN;
 
 ## 🚀 Próximas Melhorias
 
+- [x] Suporte a mensagens de texto
+- [x] Refatoração seguindo Clean Code
+- [x] Tratamento robusto de erros
 - [ ] Suporte a múltiplas mídias (imagem, vídeo, PDF)
 - [ ] Persistência de estado em Realtime Database
 - [ ] Dashboard de visualização de notas
 - [ ] Integração com Google Sheets para analytics
 - [ ] Suporte a múltiplos idiomas
+- [ ] Sistema de tags e categorização automática
 
 ---
 
