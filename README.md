@@ -1,7 +1,5 @@
 # Assistente Pessoal Google
 
-Nome do repositório no GitHub: `Assitente-Pessoal-Google`.
-
 Assistente baseado em Google Apps Script para captura de notas via Telegram, processamento com Gemini e distribuição estruturada para Google Drive, Google Tasks e Google Calendar.
 
 O projeto atende dois fluxos operacionais principais:
