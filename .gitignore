@@ -1,0 +1,28 @@
+# Clasp config/sensitive local files
+.clasp.json
+.clasprc.json
+
+# Node deps/logs
+node_modules/
+package-lock.json
+npm-debug.log
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
