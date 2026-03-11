@@ -5,6 +5,7 @@ const MENSAGENS = {
   PROCESSANDO_TEXTO: "⏳ Estruturando sua mensagem...",
   SUCESSO: "✅ Nota salva com sucesso!",
   ERRO_GEMINI: "❌ Não foi possível processar. Tente novamente.",
+  ERRO_LIMITE_GEMINI: "⚠️ A API do Gemini atingiu o limite temporário de requisições. Tente novamente em alguns minutos.",
   ERRO_TECNICO: "⚠️ Erro técnico: ",
   SEM_CONTEUDO: "📝 Envie uma mensagem de texto ou nota de voz para processar."
 };
@@ -13,6 +14,14 @@ const PROMPTS = {
   AUDIO: "Você é um assistente pessoal. Transcreva este áudio, corrija a gramática e formate em Markdown (.md) para Obsidian com título H2 e tags de categoria ao final.",
   TEXTO: "Você é um assistente pessoal. Organize este texto em Markdown (.md) para Obsidian com título H2, formatação adequada e tags de categoria ao final:\n\n"
 };
+
+const MODELOS_PADRAO = [
+  'gemini-2.5-pro',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-preview-tts'
+];
 
 // ==================== CONFIGURAÇÃO ====================
 
@@ -24,14 +33,30 @@ function getEnvOrThrow_(key) {
   return value;
 }
 
+function montarListaModelosPermitidos_(valorProperty) {
+  const modelosCustom = (valorProperty || '')
+    .split(/[\n,;]+/)
+    .map(modelo => modelo.trim())
+    .filter(modelo => modelo);
+
+  const modelosFinais = Array.from(new Set(MODELOS_PADRAO.concat(modelosCustom)));
+  return modelosFinais.join(',');
+}
+
 function getConfig_() {
   const props = PropertiesService.getScriptProperties();
   return {
     GEMINI_API_KEY: getEnvOrThrow_('GEMINI_API_KEY'),
     FOLDER_ID: getEnvOrThrow_('FOLDER_ID'),
     TELEGRAM_TOKEN: getEnvOrThrow_('TELEGRAM_TOKEN'),
+    PROCESSED_FOLDER_ID: getEnvOrThrow_('PROCESSED_FOLDER_ID'),
+    GENERAL_NOTES_FOLDER_ID: getEnvOrThrow_('GENERAL_NOTES_FOLDER_ID'),
     MODELO_IA: props.getProperty('MODELO_IA') || 'gemini-2.5-flash',
-    WEBHOOK_URL: props.getProperty('WEBHOOK_URL') || ''
+    MODELOS_PERMITIDOS: montarListaModelosPermitidos_(props.getProperty('MODELOS_PERMITIDOS')),
+    TELEGRAM_ADMIN_CHAT_ID: props.getProperty('TELEGRAM_ADMIN_CHAT_ID') || '',
+    WEBHOOK_URL: props.getProperty('WEBHOOK_URL') || '',
+    GEMINI_MIN_INTERVAL_MS: Number(props.getProperty('GEMINI_MIN_INTERVAL_MS') || '3000'),
+    MAX_ARQUIVOS_POR_BATCH: Number(props.getProperty('MAX_ARQUIVOS_POR_BATCH') || '10')
   };
 }
 
@@ -81,25 +106,113 @@ function temTexto_(message) {
 // ==================== PROCESSADORES ====================
 
 function processarMensagemAudio_(chatId, message) {
-  enviarResposta(chatId, MENSAGENS.PROCESSANDO_VOZ);
-  
-  const audioObj = message.voice || message.audio;
-  const fileId = audioObj.file_id;
-  
-  const fileUrl = getTelegramFile(fileId);
-  const audioBlob = UrlFetchApp.fetch(fileUrl).getBlob();
-  
-  const markdown = processarComGemini_(audioBlob, PROMPTS.AUDIO);
-  finalizarProcessamento_(chatId, markdown);
+  try {
+    enviarResposta(chatId, MENSAGENS.PROCESSANDO_VOZ);
+
+    const audioObj = message.voice || message.audio;
+    const fileId = audioObj.file_id;
+
+    if (!fileId || !String(fileId).trim()) {
+      throw new Error("fileId inválido no áudio");
+    }
+
+    const fileUrl = getTelegramFile(fileId);
+    const options = { method: "get", timeout: 60 };
+    const audioBlob = UrlFetchApp.fetch(fileUrl, options).getBlob();
+    
+    // Validação de tamanho e tipo
+    if (!audioBlob || audioBlob.getBytes().length === 0) {
+      throw new Error("Áudio vazio ou corrompido");
+    }
+
+    const markdown = processarComGemini_(audioBlob, PROMPTS.AUDIO);
+    finalizarProcessamento_(chatId, markdown);
+  } catch (erro) {
+    if (isGeminiRateLimitError_(erro)) {
+      enviarResposta(chatId, MENSAGENS.ERRO_LIMITE_GEMINI);
+      notificarRateLimitGemini_("Fluxo de áudio");
+      return;
+    }
+    Logger.log("Erro ao processar áudio: " + erro.toString());
+    enviarResposta(chatId, MENSAGENS.ERRO_TECNICO + erro.message);
+  }
 }
 
 function processarMensagemTexto_(chatId, message) {
-  enviarResposta(chatId, MENSAGENS.PROCESSANDO_TEXTO);
-  
   const textoUsuario = message.text.trim();
-  const markdown = processarTextoComGemini_(textoUsuario);
+
+  if (textoUsuario === '/modelo' || textoUsuario.startsWith('/modelo ')) {
+    processarComandoModelo_(chatId, textoUsuario);
+    return;
+  }
   
-  finalizarProcessamento_(chatId, markdown);
+  // Verifica se é o comando /processar
+  if (textoUsuario === '/processar') {
+    enviarResposta(chatId, "⏳ Iniciando processamento de arquivos...");
+    
+    try {
+      const resumo = processarArquivosMarkdown();
+      
+      if (resumo.arquivosProcessados === 0 && resumo.erros.length === 0) {
+        enviarResposta(chatId, "📭 Nenhum arquivo novo encontrado para processar.");
+      } else if (resumo.arquivosProcessados === 0 && resumo.erros.length > 0) {
+        enviarResposta(chatId, "⚠️ O processamento não concluiu. Erros: " + resumo.erros.length + "\nUse /modelo para revisar/trocar o modelo atual.");
+      } else {
+        const mensagem = `✅ Processamento concluído!\n\n` +
+          `📄 Arquivos: ${resumo.arquivosProcessados}\n` +
+          `✓ Tarefas: ${resumo.totalTarefas}\n` +
+          `📅 Eventos: ${resumo.totalEventos}\n` +
+          `📝 Notas: ${resumo.totalNotas}` +
+          (resumo.arquivosRestantes > 0 ? `\n\n⏳ Restantes: ${resumo.arquivosRestantes} (próximo batch)` : '') +
+          (resumo.erros.length > 0 ? `\n\n⚠️ Erros: ${resumo.erros.length}` : '');
+        
+        enviarResposta(chatId, mensagem);
+      }
+    } catch (erro) {
+      enviarResposta(chatId, "❌ Erro ao processar: " + erro.message);
+      Logger.log("Erro no comando /processar: " + erro.toString());
+    }
+    
+    return;
+  }
+  
+  // Processamento normal de texto
+  try {
+    enviarResposta(chatId, MENSAGENS.PROCESSANDO_TEXTO);
+    const markdown = processarTextoComGemini_(textoUsuario);
+    finalizarProcessamento_(chatId, markdown);
+  } catch (erro) {
+    if (isGeminiRateLimitError_(erro)) {
+      enviarResposta(chatId, MENSAGENS.ERRO_LIMITE_GEMINI);
+      notificarRateLimitGemini_("Fluxo de texto");
+      return;
+    }
+    throw erro;
+  }
+}
+
+function processarComandoModelo_(chatId, textoUsuario) {
+  const config = getConfig_();
+  const modelosPermitidos = config.MODELOS_PERMITIDOS.split(',').map(modelo => modelo.trim()).filter(modelo => modelo);
+  const partes = textoUsuario.split(/\s+/).filter(parte => parte);
+
+  if (partes.length === 1) {
+    const resposta = "🤖 Modelo atual: " + config.MODELO_IA +
+      "\n\nModelos permitidos:" +
+      "\n- " + modelosPermitidos.join("\n- ") +
+      "\n\nPara trocar: /modelo nome-do-modelo";
+    enviarResposta(chatId, resposta);
+    return;
+  }
+
+  const novoModelo = partes.slice(1).join(' ').trim();
+  if (modelosPermitidos.indexOf(novoModelo) === -1) {
+    enviarResposta(chatId, "❌ Modelo não permitido: " + novoModelo + "\nUse /modelo para ver a lista disponível.");
+    return;
+  }
+
+  PropertiesService.getScriptProperties().setProperty('MODELO_IA', novoModelo);
+  enviarResposta(chatId, "✅ Modelo atualizado para: " + novoModelo);
 }
 
 function finalizarProcessamento_(chatId, markdown) {
@@ -129,7 +242,18 @@ function getTelegramFile(fileId) {
   const config = getConfig_();
   const url = `https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/getFile?file_id=${fileId}`;
   
-  const resp = UrlFetchApp.fetch(url);
+  const options = {
+    method: "get",
+    timeout: 30,
+    muteHttpExceptions: true
+  };
+  
+  const resp = UrlFetchApp.fetch(url, options);
+  
+  if (resp.getResponseCode() >= 400) {
+    throw new Error('Erro HTTP ao obter arquivo: ' + resp.getResponseCode());
+  }
+  
   const json = JSON.parse(resp.getContentText());
   
   if (!json.ok || !json.result || !json.result.file_path) {
@@ -140,6 +264,16 @@ function getTelegramFile(fileId) {
 }
 
 function enviarResposta(chatId, texto) {
+  // Validação de entrada
+  if (!chatId || !String(chatId).trim()) {
+    Logger.log("Aviso: enviarResposta() chamada com chatId inválido");
+    return false;
+  }
+  if (!texto || !String(texto).trim()) {
+    Logger.log("Aviso: enviarResposta() chamada com texto vazio");
+    return false;
+  }
+  
   const config = getConfig_();
   const url = `https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/sendMessage`;
   
@@ -148,12 +282,24 @@ function enviarResposta(chatId, texto) {
     contentType: "application/json",
     payload: JSON.stringify({
       chat_id: chatId,
-      text: texto
+      text: String(texto).substring(0, 4096)
     }),
-    muteHttpExceptions: true
+    muteHttpExceptions: true,
+    timeout: 30
   };
   
-  UrlFetchApp.fetch(url, options);
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const status = response.getResponseCode();
+    if (status >= 400) {
+      Logger.log("Erro ao enviar mensagem Telegram (status " + status + "): " + response.getContentText());
+      return false;
+    }
+    return true;
+  } catch (erro) {
+    Logger.log("Erro crítico ao enviar resposta: " + erro.toString());
+    return false;
+  }
 }
 
 // ==================== GEMINI API ====================
@@ -195,6 +341,14 @@ function processarTextoComGemini_(texto) {
 }
 
 function enviarRequisicaoGemini_(url, payload) {
+  const json = chamarGeminiJson_(url, payload, "enviarRequisicaoGemini_");
+  if (!json) {
+    return null;
+  }
+  return extrairTextoResposta_(json);
+}
+
+function chamarGeminiJson_(url, payload, contexto) {
   const options = {
     method: "post",
     contentType: "application/json",
@@ -202,15 +356,122 @@ function enviarRequisicaoGemini_(url, payload) {
     muteHttpExceptions: true
   };
 
-  const res = UrlFetchApp.fetch(url, options);
-  const json = JSON.parse(res.getContentText());
+  const maxTentativas = 3;
+  for (let tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+    aplicarThrottleGemini_();
 
-  if (json.error) {
-    Logger.log("Erro na API Gemini: " + json.error.message);
-    return null;
+    const res = UrlFetchApp.fetch(url, options);
+    const status = res.getResponseCode();
+    const body = res.getContentText();
+
+    let json = null;
+    try {
+      json = JSON.parse(body);
+    } catch (erroParse) {
+      Logger.log("Erro ao parsear resposta Gemini em " + contexto + ": " + erroParse.toString());
+    }
+
+    const mensagemErro = json && json.error ? (json.error.message || "") : "";
+    const emRateLimit = status === 429 || /rate|quota|resource exhausted|too many requests/i.test(mensagemErro);
+
+    if (emRateLimit) {
+      const esperaMs = obterEsperaRetryGemini_(res, tentativa);
+      Logger.log("Rate limit Gemini em " + contexto + " (tentativa " + tentativa + "/" + maxTentativas + "). Aguardando " + esperaMs + "ms");
+
+      if (tentativa === maxTentativas) {
+        throw criarErroRateLimitGemini_(mensagemErro || "Limite de requisições por minuto atingido");
+      }
+
+      Utilities.sleep(esperaMs);
+      continue;
+    }
+
+    if (json && json.error) {
+      Logger.log("Erro na API Gemini em " + contexto + ": " + json.error.message);
+      return null;
+    }
+
+    if (!json) {
+      Logger.log("Resposta inválida do Gemini em " + contexto + ": status " + status);
+      return null;
+    }
+
+    return json;
   }
-  
-  return extrairTextoResposta_(json);
+
+  return null;
+}
+
+function aplicarThrottleGemini_() {
+  const config = getConfig_();
+  const props = PropertiesService.getScriptProperties();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const minIntervalMs = config.GEMINI_MIN_INTERVAL_MS;
+    const ultimoTs = Number(props.getProperty('GEMINI_LAST_REQUEST_TS') || '0');
+    const agora = Date.now();
+    const esperaMs = Math.max(0, (ultimoTs + minIntervalMs) - agora);
+
+    if (esperaMs > 0) {
+      Logger.log("[THROTTLE] Aguardando " + esperaMs + "ms antes da próxima requisição Gemini");
+      Utilities.sleep(esperaMs);
+    }
+
+    props.setProperty('GEMINI_LAST_REQUEST_TS', String(Date.now()));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function obterEsperaRetryGemini_(res, tentativa) {
+  const headers = res.getAllHeaders() || {};
+  const retryAfterRaw = headers['Retry-After'] || headers['retry-after'];
+
+  if (retryAfterRaw) {
+    const segundos = Number(retryAfterRaw);
+    if (!isNaN(segundos) && segundos > 0) {
+      return segundos * 1000;
+    }
+  }
+
+  return Math.min(60000, tentativa * 15000);
+}
+
+function criarErroRateLimitGemini_(mensagem) {
+  const erro = new Error("GeminiRateLimit: " + mensagem);
+  erro.name = 'GeminiRateLimitError';
+  return erro;
+}
+
+function isGeminiRateLimitError_(erro) {
+  return !!(erro && erro.name === 'GeminiRateLimitError');
+}
+
+function notificarRateLimitGemini_(contexto) {
+  const cache = CacheService.getScriptCache();
+  const chave = 'gemini_rate_limit_alerta';
+  if (cache.get(chave)) {
+    return;
+  }
+
+  cache.put(chave, '1', 300);
+  const config = getConfig_();
+  if (!config.TELEGRAM_ADMIN_CHAT_ID) {
+    return;
+  }
+
+  const mensagem = "🚨 Rate limit do Gemini detectado.\n" +
+    "Contexto: " + contexto + "\n" +
+    "Modelo atual: " + config.MODELO_IA + "\n" +
+    "Use /modelo para consultar ou /modelo <nome> para trocar.";
+
+  try {
+    enviarResposta(config.TELEGRAM_ADMIN_CHAT_ID, mensagem);
+  } catch (erro) {
+    Logger.log("Erro ao notificar rate limit no Telegram: " + erro.toString());
+  }
 }
 
 function extrairTextoResposta_(json) {
@@ -254,6 +515,10 @@ function gerarNomeArquivo_() {
 
 // ==================== FUNÇÕES AUXILIARES ====================
 
+/**
+ * Lista modelos Gemini que suportam generateContent e áudio.
+ * @return {Array} Array de nomes de modelos compatíveis.
+ */
 function listarModelosDisponiveis() {
   const config = getConfig_();
   const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${config.GEMINI_API_KEY}`;
@@ -266,14 +531,116 @@ function listarModelosDisponiveis() {
       throw new Error("Resposta inválida: modelos não encontrados");
     }
     
+    const modelosCompativeis = [];
+    const modelosComAudio = [];
+    
+    Logger.log("=== ANALISANDO MODELOS GEMINI ===\n");
+    
     json.models.forEach(model => {
-      const suportaConteudo = model.supportedGenerationMethods && 
-                              model.supportedGenerationMethods.includes("generateContent");
-      console.log(`Modelo: ${model.name} | Suporta generateContent: ${suportaConteudo}`);
+      const suportaGenerateContent = model.supportedGenerationMethods && 
+                                      model.supportedGenerationMethods.includes("generateContent");
+      
+      if (!suportaGenerateContent) {
+        return; // Pula modelos que não suportam generateContent
+      }
+      
+      const nomeSimplificado = model.name.replace('models/', '');
+      
+      // Verifica campos que indicam suporte multimodal/áudio
+      const temInputTokenLimit = model.inputTokenLimit && model.inputTokenLimit > 0;
+      const naoEhEmbedding = !model.name.includes('embedding');
+      const naoEhSoTexto = !model.name.includes('text-only');
+      
+      // Lista modelos conhecidos que suportam áudio
+      const modelosAudioConhecidos = [
+        'gemini-2.5-pro',
+        'gemini-2.5-flash-lite',
+        'gemini-2.0-flash',
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-preview-tts'
+      ];
+      
+      const provavelmenteSuportaAudio = modelosAudioConhecidos.some(nome => 
+        nomeSimplificado.includes(nome)
+      );
+      
+      if (naoEhEmbedding && naoEhSoTexto) {
+        modelosCompativeis.push(nomeSimplificado);
+        
+        if (provavelmenteSuportaAudio) {
+          modelosComAudio.push(nomeSimplificado);
+          Logger.log(`✓ ${nomeSimplificado} (COM ÁUDIO)`);
+        } else {
+          Logger.log(`○ ${nomeSimplificado} (verificar áudio)`);
+        }
+        
+        Logger.log(`  displayName: ${model.displayName || 'N/A'}`);
+        Logger.log(`  inputLimit: ${model.inputTokenLimit || 'N/A'} tokens`);
+        Logger.log('');
+      }
     });
+    
+    Logger.log("\n=== RESUMO ===");
+    Logger.log("Modelos com generateContent: " + modelosCompativeis.length);
+    Logger.log("Modelos com áudio (confirmados): " + modelosComAudio.length);
+    Logger.log("\nModelos recomendados para MODELOS_PERMITIDOS:");
+    Logger.log(modelosComAudio.join(','));
+    
+    return modelosComAudio.length > 0 ? modelosComAudio : modelosCompativeis;
     
   } catch (erro) {
     Logger.log("Erro ao listar modelos: " + erro.toString());
+    return [];
+  }
+}
+
+/**
+ * Testa se um modelo específico suporta áudio fazendo uma chamada real.
+ * @param {string} nomeModelo Nome do modelo (ex: 'gemini-2.0-flash')
+ * @return {boolean} True se suporta áudio.
+ */
+function testarSuporteAudio(nomeModelo) {
+  const config = getConfig_();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${nomeModelo}:generateContent?key=${config.GEMINI_API_KEY}`;
+  
+  // Áudio de teste mínimo (1 segundo de silêncio em OGG)
+  const audioTestBase64 = "T2dnUwACAAAAAAAAAABNYXJrAAAAAAAAAG4AAAA=";
+  
+  const payload = {
+    contents: [{
+      parts: [
+        { text: "teste" },
+        { inline_data: { mime_type: "audio/ogg", data: audioTestBase64 } }
+      ]
+    }]
+  };
+  
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const json = JSON.parse(response.getContentText());
+    
+    // Se não retornou erro de formato não suportado, provavelmente aceita áudio
+    if (json.error) {
+      const mensagem = json.error.message || '';
+      const naoSuportaAudio = /unsupported|not supported|invalid.*audio/i.test(mensagem);
+      Logger.log(`${nomeModelo}: ${naoSuportaAudio ? '✗ NÃO' : '✓ SIM'} suporta áudio`);
+      return !naoSuportaAudio;
+    }
+    
+    // Se gerou resposta, suporta áudio
+    Logger.log(`${nomeModelo}: ✓ SIM suporta áudio`);
+    return true;
+    
+  } catch (erro) {
+    Logger.log(`${nomeModelo}: Erro ao testar - ${erro.toString()}`);
+    return false;
   }
 }
 
