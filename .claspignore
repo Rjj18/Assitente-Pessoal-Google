@@ -1,0 +1,6 @@
+# Evita push acidental de arquivos nao relacionados ao Apps Script
+**/**
+
+# Permite somente os arquivos de codigo e manifesto
+!appsscript.json
+!*.js
