@@ -276,6 +276,7 @@ function salvarNotasLivres(notas) {
     try {
       const nomeArquivoBase = categoria.charAt(0).toUpperCase() + categoria.slice(1) + '.md';
       const nomeArquivo = sanitizarNomeArquivo(nomeArquivoBase);
+      const notasDaCategoria = notasPorCategoria[categoria];
       
       // Tenta buscar arquivo existente
       const arquivosExistentes = pastaNotas.getFilesByName(nomeArquivo);
@@ -298,8 +299,15 @@ function salvarNotasLivres(notas) {
         novoConteudo += `### ${nota.titulo}\n\n${nota.conteudo}\n\n`;
         // Adiciona tags sugeridas se existirem
         if (nota.tags_sugeridas && nota.tags_sugeridas.length > 0) {
-          const tags = nota.tags_sugeridas.map(tag => `#${tag}`).join(' ');
+          const tags = nota.tags_sugeridas
+            .map(tag => String(tag || '').trim())
+            .filter(tag => tag)
+            .map(tag => tag.startsWith('#') ? tag : `#${tag}`)
+            .join(' ');
+
+          if (tags) {
           novoConteudo += `**Tags:** ${tags}\n\n`;
+          }
         }
         contador++;
       });

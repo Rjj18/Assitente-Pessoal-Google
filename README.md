@@ -1,333 +1,243 @@
-# 🎙️ Assistente Pessoal Google
+# Assistente Pessoal Google
 
-Um assistente inteligente baseado em Google Apps Script que processa notas de voz via Telegram, enriquece com IA (Gemini) e organiza automaticamente no Google Drive.
+Assistente baseado em Google Apps Script para captura de notas via Telegram, processamento com Gemini e distribuição estruturada para Google Drive, Google Tasks e Google Calendar.
 
-Transforme seus pensamentos diretos em notas estruturadas, tarefas e eventos — tudo sem tirar a mão do bolso.
+O projeto atende dois fluxos operacionais principais:
 
----
+- ingestão síncrona de mensagens de texto e áudio enviadas ao bot
+- processamento assíncrono de arquivos Markdown armazenados no Google Drive
 
-## ✨ O que faz
+## Objetivo
 
-- **📱 Recebe voz e texto pelo Telegram** — Envie notas de voz ou mensagens de texto diretamente para o bot
-- **🧠 Processa com Gemini** — Transcreve áudio, estrutura texto e formata tudo em Markdown
-- **📊 Extrai dados estruturados** — Identifica automaticamente tarefas, notas e eventos
-- **💾 Salva no Drive/Obsidian** — Organiza tudo em uma pasta de seu Google Drive
-- **⚙️ Configurável** — Ajuste prompts para qualquer tipo de assistente
+Reduzir o atrito entre captura e organização de informação pessoal ou operacional. O sistema recebe entradas não estruturadas, normaliza o conteúdo com IA e o encaminha para o destino correto de acordo com o tipo de dado identificado.
 
----
+## Capacidades
 
-## 🚀 Começando
+- Recebimento de mensagens de texto e notas de voz via Telegram
+- Transcrição e estruturação com Gemini
+- Extração de tarefas, eventos e notas livres em JSON
+- Persistência de notas em Markdown no Google Drive
+- Criação de tarefas no Google Tasks
+- Criação de eventos no Google Calendar
+- Processamento em lote de arquivos Markdown pendentes
+- Controle básico de rate limit para chamadas ao Gemini
 
-### Pré-requisitos
+## Arquitetura
 
-- Conta Google com Google Drive e Google Apps Script habilitados
-- Bot do Telegram criado (via [@BotFather](https://t.me/botfather))
-- API key do Google Gemini
-- Pasta no Google Drive para armazenar as notas
+O projeto está dividido em quatro módulos principais:
 
-### 1. Clonar e Configurar o Projeto
+- `Código.js`: entrada principal do webhook, integração com Telegram, chamadas ao Gemini e persistência de notas brutas
+- `Cerebro.js`: definição do prompt e regras de extração estruturada
+- `Organizador.js`: distribuição dos dados extraídos para Drive, Tasks e Calendar
+- `Scanner.js`: leitura de arquivos Markdown pendentes para processamento em lote
+
+Fluxo principal:
+
+```text
+Telegram -> Webhook Apps Script -> Gemini -> JSON estruturado -> Drive / Tasks / Calendar
+```
+
+Fluxo em lote:
+
+```text
+Drive (arquivos .md) -> Scanner -> Gemini -> Organizador -> Arquivo movido para processados
+```
+
+## Estrutura do Repositório
+
+```text
+.
+├── Código.js
+├── Cerebro.js
+├── Organizador.js
+├── Scanner.js
+├── appsscript.json
+└── README.md
+```
+
+## Requisitos
+
+- Conta Google com Google Apps Script habilitado
+- Projeto Google Apps Script vinculado ao `scriptId` correto
+- Bot do Telegram criado no BotFather
+- Chave de API do Gemini
+- Pastas do Google Drive para entrada, saída e processados
+- Serviços avançados do Apps Script habilitados para Google Tasks e Google Calendar
+- `clasp` para sincronização local com o Apps Script
+
+## Configuração
+
+### 1. Clonar o repositório
 
 ```bash
 git clone https://github.com/Rjj18/Assitente-Pessoal-Google.git
 cd Assitente-Pessoal-Google
 ```
 
-### 2. Configurar Google Apps Script
-
-1. Acesse [script.google.com](https://script.google.com)
-2. Crie um novo projeto ou abra o seu
-3. Copie os arquivos `.gs.js` e `appsscript.json` do repositório para o editor
-4. Salve o projeto
-
-### 3. Habilitar APIs Necessárias
-
-- **Apps Script API**: https://script.google.com/home/usersettings (ativar)
-- **Google Drive API**: Já vem habilitada por padrão no Apps Script
-- **Gemini API**: Ative em [Google Cloud Console](https://console.cloud.google.com)
-
-### 4. Configurar Script Properties
-
-No Google Apps Script, vá para **Project Settings** ⚙️ e adicione as seguintes propriedades:
-
-| Propriedade | Valor | Obrigatório | Descrição |
-|---|---|---|---|
-| `GEMINI_API_KEY` | Sua chave da API Gemini | ✅ | Obtenha em [AI Studio](https://aistudio.google.com/apikey) |
-| `TELEGRAM_TOKEN` | Token do bot Telegram | ✅ | Obtido via [@BotFather](https://t.me/botfather) |
-| `FOLDER_ID` | ID da pasta no Drive | ✅ | Abra a pasta e copie o ID da URL |
-| `MODELO_IA` | `gemini-2.5-flash` | ❌ | Modelo padrão (outras opções: `gemini-1.5-flash`, `gemini-1.5-flash-8b`) |
-| `WEBHOOK_URL` | URL de deploy do script | ❌ | Necessária apenas para `limparFilaTelegram()` |
-
-**Como obter cada valor:**
-
-#### GEMINI_API_KEY
-```
-1. Vá para https://aistudio.google.com/apikey
-2. Clique "Create API key"
-3. Copie a chave
-```
-
-#### TELEGRAM_TOKEN
-```
-1. Abra @BotFather no Telegram
-2. /newbot
-3. Escolha nome e username
-4. Copie o token fornecido
-```
-
-#### FOLDER_ID
-```
-1. Crie uma pasta no Google Drive
-2. Abra a pasta
-3. copie o ID da URL: https://drive.google.com/drive/folders/[FOLDER_ID]
-```
-
-### 5. Fazer Deploy como Executável
-
-1. No editor do Apps Script, clique **Deploy** → **New deployment**
-2. Tipo: **Web app**
-3. Execute como: Sua conta Google
-4. Quem tem acesso: **Anyone** (permitir chamadas do Telegram)
-5. Clique **Deploy** e copie a URL de deployment
-
-### 6. Conectar o Webhook do Telegram
-
-Execute a função `limparFilaTelegram()` no console do Apps Script:
-
-```javascript
-// No editor, vá para Execute > limparFilaTelegram()
-```
-
-Ou configure manualmente via URL:
-```
-https://api.telegram.org/bot[TELEGRAM_TOKEN]/setWebhook?url=[WEBHOOK_URL]
-```
-
----
-
-## 📝 Como Usar
-
-### Enviar uma nota de voz
-
-1. Abra seu bot no Telegram
-2. Envie uma nota de voz (ou arquivo de áudio)
-3. O bot responde: "⏳ Recebido! Processando sua voz..."
-4. A nota é transcrita, estruturada e salva no Drive
-5. Confirmação: "✅ Nota salva com sucesso!"
-
-### Enviar uma mensagem de texto
-
-1. Abra seu bot no Telegram
-2. Digite ou cole qualquer texto (ideias, anotações, tarefas)
-3. O bot responde: "⏳ Estruturando sua mensagem..."
-4. O texto é organizado em Markdown e salvo no Drive
-5. Confirmação: "✅ Nota salva com sucesso!"
-
-### Testar localmente
-
-```javascript
-testarIntegracaoComIA()
-```
-
-Executa no console do Apps Script e verifica:
-- Conectividade com a pasta do Drive
-- Leitura de arquivos Markdown
-- Processamento com Gemini
-- Estruturação de dados
-
----
-
-## 🎯 Customizar para Outros Assistentes
-
-Os prompts são facilmente ajustáveis para qualquer tipo de assistente. Edite as constantes em `Código.js`:
-
-```javascript
-const PROMPTS = {
-  AUDIO: "Seu prompt para processar áudio",
-  TEXTO: "Seu prompt para processar texto"
-};
-```
-
-### Exemplos de Customização
-
-#### Para um Assistente de Código
-
-```javascript
-const PROMPTS = {
-  AUDIO: "Você é um expert em programação. Transcreva este áudio e gere snippets de código comentados em Python.",
-  TEXTO: "Você é um expert em programação. Analise este código/descrição e formate em Markdown com syntax highlighting:\n\n"
-};
-```
-
-#### Para um Assistente de Saúde/Fitness
-
-```javascript
-const PROMPTS = {
-  AUDIO: "Você é um personal trainer. Transcreva esta descrição do treino e organize em formato Markdown com séries, repetições e observações.",
-  TEXTO: "Você é um nutricionista. Estruture estas informações alimentares em Markdown com tabela nutricional e recomendações:\n\n"
-};
-```
-
-#### Para um Assistente de Criatividade
-
-```javascript
-const PROMPTS = {
-  AUDIO: "Você é um escritor criativo. Transcreva este áudio e expanda em uma história com elementos de ficção científica.",
-  TEXTO: "Você é um roteirista. Transforme esta sinopse em um roteiro estruturado em Markdown com cenas e diálogos:\n\n"
-};
-```
-
-#### Para um Assistente de Estudo
-
-```javascript
-const PROMPTS = {
-  AUDIO: "Você é um professor. Transcreva esta aula e crie um resumo com tópicos principais, conceitos-chave e exercícios.",
-  TEXTO: "Você é um revisor pedagógico. Organize estas anotações de estudo em Markdown com hierarquia de tópicos e flashcards:\n\n"
-};
-```
-
----
-
-## 📂 Estrutura do Projeto
-
-```
-Assitente-Pessoal-Google/
-├── Código.js              # Handler principal (webhook do Telegram)
-├── Cerebro.gs.js          # Lógica de processamento com Gemini
-├── Scanner.gs.js          # Integração com Google Drive
-├── Organizador.gs.js      # Testes e funções auxiliares
-├── appsscript.json        # Configuração do Apps Script
-└── README.md              # Este arquivo
-```
-
-### Fluxo de Processamento
-
-```
-Telegram (voz/áudio/texto)
-        ↓
-    doPost() [Código.js]
-        ↓
-   ┌────────────────┐
-   │ Tipo: Áudio?   │
-   └────┬───────┬───┘
-        │       │
-    Sim │       │ Não (Texto)
-        │       │
-        ↓       ↓
-getTelegramFile() → processarMensagemTexto_()
-        ↓               ↓
-processarComGemini_() → processarTextoComGemini_()
-        ↓               ↓
-        └───────┬───────┘
-                ↓
-        salvarNoDrive()
-                ↓
-        enviarResposta() → Confirmação no Telegram
-```
-
-### Arquitetura do Código
-
-O código foi refatorado seguindo princípios de **Clean Code**:
-
-- **Separação de responsabilidades**: Cada função tem um propósito único
-- **Constantes centralizadas**: Mensagens e prompts em objetos imutáveis
-- **Nomenclatura descritiva**: Funções privadas terminam com `_`
-- **Tratamento de erros robusto**: Validações e logs em todas as camadas
-- **Modularização**: Código organizado por seções (Config, API, Drive, etc.)
-
----
-
-## 🔧 Funções Principais
-
-### `doPost(e)`
-Handler principal que recebe webhooks do Telegram. Identifica o tipo de mensagem (voz/audio/texto) e roteia para o processador adequado.
-
-### `processarMensagemAudio_(chatId, message)`
-Baixa o áudio do Telegram, envia para Gemini com prompt específico e salva o resultado.
-
-### `processarMensagemTexto_(chatId, message)`
-Processa mensagens de texto diretamente com Gemini usando prompt de estruturação.
-
-### `processarComGemini_(audioBlob, promptTexto)`
-Envia áudio para a Gemini API. Retorna texto transcrito e formatado.
-
-### `processarTextoComGemini_(texto)`
-Envia texto para a Gemini API. Retorna conteúdo estruturado em Markdown.
-
-### `salvarNoDrive(conteudo)`
-Cria um arquivo `.md` na pasta configurada com timestamp como nome.
-
-### `listarNovosArquivosMarkdown()`
-Varre a pasta Drive e retorna todos os `.md` para processamento em lote.
-
-### `limparFilaTelegram()`
-Reseta o webhook do Telegram para limpar fila de mensagens pendentes.
-
----
-
-## ⚙️ Variáveis de Ambiente
-
-Todas as chaves sensíveis são gerenciadas via **Script Properties** (não são hardcoded no código).
-
-```javascript
-// Acessadas internamente via:
-const config = getConfig_();
-const apiKey = config.GEMINI_API_KEY;
-const botToken = config.TELEGRAM_TOKEN;
-```
-
----
-
-## 🐛 Troubleshooting
-
-### "Variável de ambiente ausente: GEMINI_API_KEY"
-- Verifique se configurou todas as 3 propriedades obrigatórias em Project Settings
-
-### "Erro ao obter arquivo do Telegram"
-- Confirme que o `TELEGRAM_TOKEN` está correto
-- Verifique o ID do arquivo enviado
-
-### "Pasta não encontrada no Drive"
-- Confirme que o `FOLDER_ID` está correto
-- Certifique-se que a pasta é acessível com a conta do Apps Script
-
-### "Erro na API Gemini"
-- Verifique se a chave está ativa em [Google Cloud Console](https://console.cloud.google.com)
-- Confirme se o modelo escolhido para `MODELO_IA` suporta modo áudio
-
----
-
-## 🚀 Próximas Melhorias
-
-- [x] Suporte a mensagens de texto
-- [x] Refatoração seguindo Clean Code
-- [x] Tratamento robusto de erros
-- [ ] Suporte a múltiplas mídias (imagem, vídeo, PDF)
-- [ ] Persistência de estado em Realtime Database
-- [ ] Dashboard de visualização de notas
-- [ ] Integração com Google Sheets para analytics
-- [ ] Suporte a múltiplos idiomas
-- [ ] Sistema de tags e categorização automática
-
----
-
-## 📄 Licença
-
-MIT License — Sinta-se livre para usar, modificar e distribuir.
-
----
-
-## 👤 Autor
-
-Desenvolvido com ❤️ — um projeto de automação inteligente para produtividade pessoal
-
----
-
-**Pronto para começar?**
+### 2. Instalar e autenticar o `clasp`
 
 ```bash
-git clone https://github.com/Rjj18/Assitente-Pessoal-Google.git
-cd Assitente-Pessoal-Google
-# Configure as Script Properties e faça deploy!
+npm install -g @google/clasp
+clasp login
 ```
 
-Perguntas? Abra uma [issue](https://github.com/Rjj18/Assitente-Pessoal-Google/issues) 🎉
+### 3. Sincronizar o projeto Apps Script
+
+```bash
+clasp pull
+```
+
+### 4. Configurar propriedades do script
+
+No editor do Google Apps Script, em `Project Settings > Script properties`, configure:
+
+| Propriedade | Obrigatória | Descrição |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | Sim | Chave de API do Gemini |
+| `TELEGRAM_TOKEN` | Sim | Token do bot Telegram |
+| `FOLDER_ID` | Sim | Pasta de entrada para notas brutas |
+| `PROCESSED_FOLDER_ID` | Sim | Pasta para arquivos já processados |
+| `GENERAL_NOTES_FOLDER_ID` | Sim | Pasta onde as notas livres categorizadas serão mantidas |
+| `MODELO_IA` | Não | Modelo padrão do Gemini |
+| `MODELOS_PERMITIDOS` | Não | Lista adicional de modelos permitidos |
+| `WEBHOOK_URL` | Não | URL pública do deploy Apps Script |
+| `TELEGRAM_ADMIN_CHAT_ID` | Não | Chat de notificação operacional |
+| `GEMINI_MIN_INTERVAL_MS` | Não | Intervalo mínimo entre chamadas ao Gemini |
+| `MAX_ARQUIVOS_POR_BATCH` | Não | Limite de arquivos por execução em lote |
+| `PROCESSAMENTO_DIARIO_HORA` | Não | Hora do trigger automático |
+| `PROCESSAMENTO_DIARIO_MINUTO` | Não | Minuto do trigger automático |
+
+### 5. Configurar o webhook do Telegram
+
+Depois do deploy como Web App, use a URL publicada pelo Apps Script e registre o webhook com a função utilitária existente no projeto ou diretamente pela API do Telegram.
+
+## Deploy
+
+### Publicar alterações no Apps Script
+
+```bash
+clasp push
+```
+
+### Abrir o projeto remoto
+
+```bash
+clasp open
+```
+
+### Fluxo recomendado de trabalho
+
+```bash
+clasp pull
+# editar arquivos locais
+clasp push
+```
+
+## Execução Operacional
+
+### Entrada via Telegram
+
+O webhook recebe mensagens em `doPost(e)` e distingue três cenários:
+
+- áudio ou voz
+- mensagem de texto
+- comandos operacionais, como `/modelo` e `/processar`
+
+Para texto e áudio, o conteúdo é enviado ao Gemini e o retorno é salvo ou distribuído conforme o fluxo usado.
+
+### Processamento em lote
+
+O comando `/processar` dispara a leitura de arquivos Markdown pendentes e envia o conteúdo para extração estruturada. Ao final, o sistema:
+
+- cria tarefas em Google Tasks
+- cria eventos em Google Calendar
+- agrega notas livres por categoria no Drive
+- move o arquivo original para a pasta de processados
+
+## Modelo de Dados Esperado
+
+O módulo de extração espera um JSON com a seguinte estrutura lógica:
+
+```json
+{
+  "tarefas": [
+    {
+      "titulo": "Resumo acionável da tarefa",
+      "detalhes": "Contexto adicional"
+    }
+  ],
+  "notas_livres": [
+    {
+      "titulo": "Tema da nota",
+      "conteudo": "Anotações completas e formatadas",
+      "categoria": "projetos|estudos|artigos|ideias|work_routine",
+      "tags_sugeridas": ["tag1", "tag2"]
+    }
+  ],
+  "eventos": [
+    {
+      "titulo": "Nome do evento",
+      "data_inicio": "YYYY-MM-DD",
+      "hora_inicio": "HH:mm",
+      "data_fim": "YYYY-MM-DD",
+      "hora_fim": "HH:mm",
+      "data_sugerida_original": "Texto original"
+    }
+  ]
+}
+```
+
+## Funções Operacionais Úteis
+
+- `processarArquivosMarkdown()`: executa o processamento em lote
+- `configurarTriggersAutomaticos()`: recria o trigger diário de processamento
+- `listarTriggersProcessamento()`: lista os triggers existentes
+- `listarModelosDisponiveis()`: consulta modelos Gemini suportados
+- `testarSuporteAudio(nomeModelo)`: valida suporte a áudio em um modelo específico
+- `testarIntegracaoComIA()`: executa um teste simples de integração
+- `limparFilaTelegram()`: remove atualizações pendentes e reconfigura o webhook
+
+## Desenvolvimento com Docker
+
+O ambiente local pode ser usado via Docker para evitar dependências instaladas no host.
+
+Subir o ambiente:
+
+```bash
+sudo docker compose up -d
+```
+
+Executar comandos `clasp` no container:
+
+```bash
+sudo docker exec workspace-gas sh -c 'cd /workspace/Agente_Voz_Roger && clasp pull'
+sudo docker exec workspace-gas sh -c 'cd /workspace/Agente_Voz_Roger && clasp push'
+```
+
+## Segurança e Boas Práticas
+
+- Não versionar `.clasprc.json` ou `.clasp.json`
+- Manter segredos exclusivamente em Script Properties
+- Validar IDs de pastas e tokens antes de colocar o webhook em produção
+- Monitorar erros de quota do Gemini e ajustar `GEMINI_MIN_INTERVAL_MS` se necessário
+- Revisar periodicamente os prompts para evitar deriva de saída estrutural
+- Tratar o retorno do modelo como entrada não confiável e manter validação defensiva
+
+## Limitações Conhecidas
+
+- A qualidade da extração depende do modelo Gemini selecionado
+- Datas ambíguas podem exigir ajuste manual no Calendar
+- Áudios com baixa qualidade impactam a transcrição e a categorização
+- O fluxo de lote depende da integridade dos arquivos Markdown e do acesso correto às pastas no Drive
+
+## Observações de Manutenção
+
+- Alterações em prompt e contrato JSON devem ser refletidas no módulo que persiste as notas
+- Mudanças de nomenclatura de arquivos locais devem ser verificadas antes do `clasp push`
+- O repositório Git e o projeto Apps Script têm ciclos de deploy distintos; `git push` não publica no GAS
+
+## Repositório
+
+Origem Git:
+
+`https://github.com/Rjj18/Assitente-Pessoal-Google`
