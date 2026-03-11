@@ -1,243 +1,378 @@
-# Assistente Pessoal Google
+# 🎙️ Agente Voz - Assistente Pessoal Inteligente
 
-Assistente baseado em Google Apps Script para captura de notas via Telegram, processamento com Gemini e distribuição estruturada para Google Drive, Google Tasks e Google Calendar.
+Sistema inteligente de processamento de notas por voz e texto, com integração a Google Apps Script, Telegram, Gemini API, Google Drive, Google Tasks, Google Calendar e Obsidian.
 
-O projeto atende dois fluxos operacionais principais:
+## 🎯 Visão Geral
 
-- ingestão síncrona de mensagens de texto e áudio enviadas ao bot
-- processamento assíncrono de arquivos Markdown armazenados no Google Drive
+O **Agente Voz** é um bot de Telegram que:
+1. **Captura notas por voz ou texto** via Telegram
+2. **Processa com IA (Gemini)** para estructura e limpeza
+3. **Distribui para múltiplos serviços**:
+   - 📝 Google Drive (notas estruturadas em Markdown para Obsidian)
+   - ✅ Google Tasks (com extração automática de tarefas)
+   - 📅 Google Calendar (com extração automática de eventos)
+   - 🔖 Tags inteligentes (sugeridas por IA)
 
-## Objetivo
+## 📋 Arquitetura
 
-Reduzir o atrito entre captura e organização de informação pessoal ou operacional. O sistema recebe entradas não estruturadas, normaliza o conteúdo com IA e o encaminha para o destino correto de acordo com o tipo de dado identificado.
-
-## Capacidades
-
-- Recebimento de mensagens de texto e notas de voz via Telegram
-- Transcrição e estruturação com Gemini
-- Extração de tarefas, eventos e notas livres em JSON
-- Persistência de notas em Markdown no Google Drive
-- Criação de tarefas no Google Tasks
-- Criação de eventos no Google Calendar
-- Processamento em lote de arquivos Markdown pendentes
-- Controle básico de rate limit para chamadas ao Gemini
-
-## Arquitetura
-
-O projeto está dividido em quatro módulos principais:
-
-- `Código.js`: entrada principal do webhook, integração com Telegram, chamadas ao Gemini e persistência de notas brutas
-- `Cerebro.js`: definição do prompt e regras de extração estruturada
-- `Organizador.js`: distribuição dos dados extraídos para Drive, Tasks e Calendar
-- `Scanner.js`: leitura de arquivos Markdown pendentes para processamento em lote
-
-Fluxo principal:
-
-```text
-Telegram -> Webhook Apps Script -> Gemini -> JSON estruturado -> Drive / Tasks / Calendar
+```
+┌─────────────────┐
+│   Telegram Bot  │ (webhook)
+└────────┬────────┘
+         │
+    ┌────▼────┐
+    │  GAS    │ (Google Apps Script)
+    │ Código  │ (Webhook Handler)
+    └────┬────┘
+         │
+    ┌────▼────────────────┐
+    │  Processamento      │
+    ├────────────────────┤
+    │ • Cérebro (prompt) │ ← IA structuring
+    │ • Organizador      │ ← Distribuição
+    │ • Scanner          │ ← Batch processing
+    └────┬───────────────┘
+         │
+    ┌────▼──────────────────────────┐
+    │   Destinos de Sincronização   │
+    ├───────────────────────────────┤
+    │ • Google Drive (Markdown)     │
+    │ • Google Tasks                │
+    │ • Google Calendar             │
+    │ • Obsidian (via Drive Sync)   │
+    └───────────────────────────────┘
 ```
 
-Fluxo em lote:
+## 🚀 Quick Start
 
-```text
-Drive (arquivos .md) -> Scanner -> Gemini -> Organizador -> Arquivo movido para processados
-```
-
-## Estrutura do Repositório
-
-```text
-.
-├── Código.js
-├── Cerebro.js
-├── Organizador.js
-├── Scanner.js
-├── appsscript.json
-└── README.md
-```
-
-## Requisitos
-
+### 1. Pré-requisitos
+- Node.js + npm (para `clasp`)
 - Conta Google com Google Apps Script habilitado
-- Projeto Google Apps Script vinculado ao `scriptId` correto
-- Bot do Telegram criado no BotFather
-- Chave de API do Gemini
-- Pastas do Google Drive para entrada, saída e processados
-- Serviços avançados do Apps Script habilitados para Google Tasks e Google Calendar
-- `clasp` para sincronização local com o Apps Script
+- Conta Telegram Bot (via BotFather)
+- Chave API do Google Generative AI (Gemini)
 
-## Configuração
+### 2. Setup Inicial
 
-### 1. Clonar o repositório
-
+**Clone e configure o ambiente:**
 ```bash
-git clone https://github.com/Rjj18/Assitente-Pessoal-Google.git
-cd Assitente-Pessoal-Google
+git clone <repo>
+cd app_assistente/Agente_Voz_Roger
 ```
 
-### 2. Instalar e autenticar o `clasp`
-
+**Instale clasp globalmente:**
 ```bash
 npm install -g @google/clasp
-clasp login
+clasp login  # Autorize com sua conta Google
 ```
 
-### 3. Sincronizar o projeto Apps Script
+**Configure as variáveis de ambiente:**
 
-```bash
-clasp pull
+No Google Apps Script, acesse **Menu: Projeto > Propriedades do Script** e adicione:
+
+```
+GEMINI_API_KEY=seu-api-key-aqui
+TELEGRAM_TOKEN=seu-token-telegram-aqui
+TELEGRAM_ADMIN_CHAT_ID=seu-chat-id-aqui
+FOLDER_ID=id-da-pasta-drive-para-notas-brutas
+PROCESSED_FOLDER_ID=id-da-pasta-de-processados
+GENERAL_NOTES_FOLDER_ID=id-da-pasta-geral-de-notas
+WEBHOOK_URL=https://script.google.com/macros/d/{SCRIPT_ID}/usercontent/doPost
+MODELO_IA=gemini-2.5-flash
+GEMINI_MIN_INTERVAL_MS=3000
+MAX_ARQUIVOS_POR_BATCH=10
+PROCESSAMENTO_DIARIO_HORA=7
+PROCESSAMENTO_DIARIO_MINUTO=15
 ```
 
-### 4. Configurar propriedades do script
-
-No editor do Google Apps Script, em `Project Settings > Script properties`, configure:
-
-| Propriedade | Obrigatória | Descrição |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | Sim | Chave de API do Gemini |
-| `TELEGRAM_TOKEN` | Sim | Token do bot Telegram |
-| `FOLDER_ID` | Sim | Pasta de entrada para notas brutas |
-| `PROCESSED_FOLDER_ID` | Sim | Pasta para arquivos já processados |
-| `GENERAL_NOTES_FOLDER_ID` | Sim | Pasta onde as notas livres categorizadas serão mantidas |
-| `MODELO_IA` | Não | Modelo padrão do Gemini |
-| `MODELOS_PERMITIDOS` | Não | Lista adicional de modelos permitidos |
-| `WEBHOOK_URL` | Não | URL pública do deploy Apps Script |
-| `TELEGRAM_ADMIN_CHAT_ID` | Não | Chat de notificação operacional |
-| `GEMINI_MIN_INTERVAL_MS` | Não | Intervalo mínimo entre chamadas ao Gemini |
-| `MAX_ARQUIVOS_POR_BATCH` | Não | Limite de arquivos por execução em lote |
-| `PROCESSAMENTO_DIARIO_HORA` | Não | Hora do trigger automático |
-| `PROCESSAMENTO_DIARIO_MINUTO` | Não | Minuto do trigger automático |
-
-### 5. Configurar o webhook do Telegram
-
-Depois do deploy como Web App, use a URL publicada pelo Apps Script e registre o webhook com a função utilitária existente no projeto ou diretamente pela API do Telegram.
-
-## Deploy
-
-### Publicar alterações no Apps Script
-
-```bash
-clasp push
-```
-
-### Abrir o projeto remoto
-
-```bash
-clasp open
-```
-
-### Fluxo recomendado de trabalho
-
-```bash
-clasp pull
-# editar arquivos locais
-clasp push
-```
-
-## Execução Operacional
-
-### Entrada via Telegram
-
-O webhook recebe mensagens em `doPost(e)` e distingue três cenários:
-
-- áudio ou voz
-- mensagem de texto
-- comandos operacionais, como `/modelo` e `/processar`
-
-Para texto e áudio, o conteúdo é enviado ao Gemini e o retorno é salvo ou distribuído conforme o fluxo usado.
-
-### Processamento em lote
-
-O comando `/processar` dispara a leitura de arquivos Markdown pendentes e envia o conteúdo para extração estruturada. Ao final, o sistema:
-
-- cria tarefas em Google Tasks
-- cria eventos em Google Calendar
-- agrega notas livres por categoria no Drive
-- move o arquivo original para a pasta de processados
-
-## Modelo de Dados Esperado
-
-O módulo de extração espera um JSON com a seguinte estrutura lógica:
-
-```json
-{
-  "tarefas": [
-    {
-      "titulo": "Resumo acionável da tarefa",
-      "detalhes": "Contexto adicional"
-    }
-  ],
-  "notas_livres": [
-    {
-      "titulo": "Tema da nota",
-      "conteudo": "Anotações completas e formatadas",
-      "categoria": "projetos|estudos|artigos|ideias|work_routine",
-      "tags_sugeridas": ["tag1", "tag2"]
-    }
-  ],
-  "eventos": [
-    {
-      "titulo": "Nome do evento",
-      "data_inicio": "YYYY-MM-DD",
-      "hora_inicio": "HH:mm",
-      "data_fim": "YYYY-MM-DD",
-      "hora_fim": "HH:mm",
-      "data_sugerida_original": "Texto original"
-    }
-  ]
+**Obtenha os IDs do Google Drive:**
+```javascript
+// Execute no console do Google Apps Script > Editor:
+function obterIDs() {
+  Logger.log("ID da pasta raiz: " + DriveApp.getRootFolder().getId());
+  
+  // Para pastas específicas, clique com botão direito > Compartilhar > copie da URL
+  // URL: https://drive.google.com/drive/folders/{FOLDER_ID}
 }
 ```
 
-## Funções Operacionais Úteis
-
-- `processarArquivosMarkdown()`: executa o processamento em lote
-- `configurarTriggersAutomaticos()`: recria o trigger diário de processamento
-- `listarTriggersProcessamento()`: lista os triggers existentes
-- `listarModelosDisponiveis()`: consulta modelos Gemini suportados
-- `testarSuporteAudio(nomeModelo)`: valida suporte a áudio em um modelo específico
-- `testarIntegracaoComIA()`: executa um teste simples de integração
-- `limparFilaTelegram()`: remove atualizações pendentes e reconfigura o webhook
-
-## Desenvolvimento com Docker
-
-O ambiente local pode ser usado via Docker para evitar dependências instaladas no host.
-
-Subir o ambiente:
-
-```bash
-sudo docker compose up -d
+**Configure o webhook do Telegram:**
+```javascript
+// Execute uma vez no Google Apps Script para registrar o webhook:
+function configurarWebhook() {
+  const config = getConfig_();
+  const url = `https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/setWebhook`;
+  
+  const payload = {
+    url: config.WEBHOOK_URL,
+    drop_pending_updates: true
+  };
+  
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload)
+  };
+  
+  const response = UrlFetchApp.fetch(url, options);
+  Logger.log("Webhook configurado: " + response.getContentText());
+}
 ```
 
-Executar comandos `clasp` no container:
+### 3. Deploy
 
 ```bash
-sudo docker exec workspace-gas sh -c 'cd /workspace/Agente_Voz_Roger && clasp pull'
-sudo docker exec workspace-gas sh -c 'cd /workspace/Agente_Voz_Roger && clasp push'
+clasp push        # Push do código local para GAS
+clasp open        # Abre o projeto no navegador
 ```
 
-## Segurança e Boas Práticas
+## 📱 Como Usar
 
-- Não versionar `.clasprc.json` ou `.clasp.json`
-- Manter segredos exclusivamente em Script Properties
-- Validar IDs de pastas e tokens antes de colocar o webhook em produção
-- Monitorar erros de quota do Gemini e ajustar `GEMINI_MIN_INTERVAL_MS` se necessário
-- Revisar periodicamente os prompts para evitar deriva de saída estrutural
-- Tratar o retorno do modelo como entrada não confiável e manter validação defensiva
+### Comandos Telegram
 
-## Limitações Conhecidas
+**📝 Enviar nota de voz ou texto:**
+```
+Apenas clique em 🎤 para enviar áudio
+OU digitáe uma mensagem e envie
+```
 
-- A qualidade da extração depende do modelo Gemini selecionado
-- Datas ambíguas podem exigir ajuste manual no Calendar
-- Áudios com baixa qualidade impactam a transcrição e a categorização
-- O fluxo de lote depende da integridade dos arquivos Markdown e do acesso correto às pastas no Drive
+**⚙️ Ver/Trocar modelo IA:**
+```
+/modelo                    # Mostra modelo atual
+/modelo gemini-2.5-pro    # Troca para outro modelo
+```
 
-## Observações de Manutenção
+**🔄 Processar lote de arquivos:**
+```
+/processar   # Processa até 10 arquivos não processados (configurável)
+```
 
-- Alterações em prompt e contrato JSON devem ser refletidas no módulo que persiste as notas
-- Mudanças de nomenclatura de arquivos locais devem ser verificadas antes do `clasp push`
-- O repositório Git e o projeto Apps Script têm ciclos de deploy distintos; `git push` não publica no GAS
+### Resultado no Obsidian
 
-## Repositório
+As notas processadas aparecem no Drive em arquivos Markdown categoria:
 
-Origem Git:
+```markdown
+# Ideias
 
-`https://github.com/Rjj18/Assitente-Pessoal-Google`
+---
+## [2026-03-10 14:23]
+
+### Melhorar o sistema de tags
+
+Implementar sistema de categorização automática visual em Markdown, com suporte a múltiplas dimensões (prioridade, status, tipo).
+
+**Tags:** #sistema #obsidian #automação
+
+### Novo framework de dados
+
+Consideração sobre integração de novo sistema de persistência que seja mais eficiente.
+
+**Tags:** #tech #framework #backend
+```
+
+Com **Obsidian** sincronizado via Google Drive, as tags aparecem no grafo e ficam automaticamente indexadas! 🎉
+
+## 🏗️ Estrutura do Código
+
+### `Código.js` (~630 linhas)
+- **Webhook Handler**: Processa requisições do Telegram
+- **Processadores**: `processarMensagemAudio_()`, `processarMensagemTexto_()`
+- **Gemini Integration**: Chamar IA para processar conteúdo
+- **Telegram API**: Enviar/receber mensagens
+- **Google Drive**: Salvar notas brutas
+- **Tratamento de Rate Limit** com retry automático
+
+### `Organizador.js` (~560 linhas)
+- **Distribuidor**: Envia dados para Tasks, Calendar, Drive
+- **Parser de Datas**: Extrai datas inteligentemente com IA
+- **Google Calendar**: Cria eventos com datas extraídas
+- **Google Tasks**: Cria tarefas com contexto
+- **Salvamento de Notas**: Agrega por categoria com tags
+
+### `Cerebro.gs.js` (~100 linhas)
+- **Prompt do Gemini**: Instrução para estruturação de dados
+- **Schema JSON**: Define estrutura esperada de retorno
+
+### `Scanner.gs.js` (~35 linhas)
+- **Listagem de arquivos**: Encontra novos Markdown não processados
+- **Batch processing**: Processa em lotes configuráveis
+
+## ⚙️ Configuração Avançada
+
+### Ajustar Frequência de Processamento
+
+**Para processar 1x ao dia automaticamente:**
+```javascript
+// Execute uma vez:
+configurarTriggersAutomaticos();
+
+// Para visualizar triggers:
+listarTriggersProcessamento();
+```
+
+### Mudar Modelo IA em Tempo Real
+
+Via Telegram:
+```
+/modelo gemini-2.5-pro    # Muda para gemini pro
+```
+
+Ou no Script Properties for modelos permitidos:
+```
+MODELOS_PERMITIDOS: gemini-2.5-pro,gemini-2.5-flash,gemini-2.0-flash
+```
+
+### Aumentar Limite de Batch
+
+No Script Properties:
+```
+MAX_ARQUIVOS_POR_BATCH=50    # Processa até 50 arquivos por vez
+```
+
+### Configurar Taxa de Rate Limit
+
+No Script Properties:
+```
+GEMINI_MIN_INTERVAL_MS=5000   # Aguarda 5s entre requisições (padrão 3s)
+```
+
+## 🔒 Segurança
+
+### ⚠️ IMPORTANTE: Proteger Credenciais
+
+**NUNCA** fazer push de `.clasprc.json` e `.clasp.json`! 
+
+Esses arquivos contêm:
+- `scriptId` (ID único do projeto GAS) 
+- Tokens de autenticação
+
+**Verificar se está no `.gitignore`:**
+```bash
+cat .gitignore | grep clasp
+# Deve retornar: .clasprc.json e .clasp.json
+```
+
+**Se já foi feito push acidentalmente:**
+```bash
+git rm --cached .clasprc.json .clasp.json
+git commit -m "Remove sensitive clasp files"
+git push
+```
+
+### Boas Práticas
+
+1. ✅ Use **Script Properties** para credenciais (não no código)
+2. ✅ Valide **todas as entradas** de webhook
+3. ✅ Implemente **rate limiting** para APIs
+4. ✅ Log detalhadade **erros** para debug
+5. ✅ Use **timeouts** em chamadas HTTP
+6. ✅ Sanitize **nomes de arquivo** antes de criar no Drive
+
+## 🐛 Troubleshooting
+
+### "❌ Não foi possível processar"
+
+**Causas comuns:**
+1. API Gemini sem saldo / quota excedida
+2. Pastas do Drive com IDs inválidos
+3. Áudio corrompido ou muito pesado
+
+**Debug:**
+```javascript
+// Execute no console GAS:
+Logger.log(getConfig_());  // Verifica todas as variáveis
+listarTriggersProcessamento();  // Verifica triggers
+testarIntegracaoComIA();  // Testa fluxo completo
+```
+
+### "⚠️ Rate limit do Gemini"
+
+Aumentar intervalo entre requisições:
+```
+GEMINI_MIN_INTERVAL_MS=10000  # Espera 10s
+```
+
+Ou trocar modelo para menos pesado:
+```
+/modelo gemini-2.5-flash   # Mais rápido e barato
+```
+
+### Notas não aparecem no Obsidian
+
+1. Verificar se Drive está sincronizado localmente
+2. Confirmar `GENERAL_NOTES_FOLDER_ID` está correto
+3. Rodar `/processar` manualmente para ver erros
+
+## 📊 Limites Conhecidos
+
+| Limite | Valor | Nota |
+|--------|-------|------|
+| Tamanho de áudio | 20 MB | Telegram limit |
+| Tamanho de mensagem Telegram | 4096 chars | Truncado automaticamente |
+| Requisições Gemini/min | Conforme plano | Rate limit handling |
+| Arquivos/batch | 10 (configurável) | Evita timeout |
+| Timeout HTTP | 30-60s | Para diferentes calls |
+
+## 📚 API Reference
+
+### Funções Públicas
+
+```javascript
+// Distribui dados estruturados para serviços
+distribuirDadosExtraidos(dadosEstruturados, arquivoId)
+
+// Processa lote de arquivos Markdown
+processarArquivosMarkdown()
+
+// Configura trigger diário automático
+configurarTriggersAutomaticos()
+
+// Lista triggers ativos
+listarTriggersProcessamento()
+
+// Lista modelos Gemini disponíveis
+listarModelosDisponiveis()
+
+// Testa suporte de áudio em modelo
+testarSuporteAudio(nomeModelo)
+
+// Testa integração completa
+testarIntegracaoComIA()
+```
+
+## 🚀 Deploy com Docker
+
+Opcionalmente, pode rodar ambiente de desenvolvimento em Docker:
+
+```bash
+docker-compose up -d              # Inicia container
+docker exec -it workspace-gas sh  # Entra no container
+
+# Dentro do container:
+cd /workspace/Agente_Voz_Roger
+clasp pull   # Puxa código do GAS
+clasp push   # Sobe código para GAS
+```
+
+## 📝 Changelog
+
+### v1.1.0 (Março 2026)
+- ✅ Tags sugeridas por IA em notas
+- ✅ Melhor tratamento de timeouts
+- ✅ Validação de entrada robusta
+- ✅ Rate limiting aprimorado
+
+### v1.0.0 (Inicial)
+- 🎙️ Processamento de áudio e texto
+- 📅 Integração com Calendar e Tasks
+- 🔖 Tags automáticas
+- 🎯 Batch processing com triggers
+
+## 🤝 Contribuindo
+
+1. Clone o repo
+2. Crie uma branch para sua feature
+3. Faça push e abra um Pull Request
+
+## 📄 Licença
+
+MIT License - veja LICENSE para detalhes

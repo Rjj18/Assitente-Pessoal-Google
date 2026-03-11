@@ -1,0 +1,11 @@
+services:
+  gas-dev:
+    build: .
+    container_name: workspace-gas
+    working_dir: /workspace
+    environment:
+      - HOME=/workspace
+    volumes:
+      - .:/workspace
+    stdin_open: true
+    tty: true

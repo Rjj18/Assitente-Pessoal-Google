@@ -1,28 +1,28 @@
-# Clasp configuration e credenciais (NUNCA fazer push!)
-.clasprc.json
+# Clasp config/sensitive local files
 .clasp.json
+.clasprc.json
 
-# Dependencies
+# Node deps/logs
 node_modules/
 package-lock.json
 npm-debug.log
 
-# IDE
+# IDE/editor
 .vscode/
 .idea/
 *.swp
-
-# Environment
-.env
-.env.local
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Env
+.env
+.env.local
 
 # Build output
 dist/
 build/
+
+# Logs
+*.log
