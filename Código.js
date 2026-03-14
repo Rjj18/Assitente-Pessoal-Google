@@ -24,6 +24,8 @@ const MODELOS_PADRAO = [
   'gemini-2.5-flash-preview-tts'
 ];
 
+const GEMINI_DAILY_LIMIT_PADRAO = 20;
+
 // ==================== CONFIGURAÇÃO ====================
 
 function getEnvOrThrow_(key) {
@@ -57,6 +59,7 @@ function getConfig_() {
     TELEGRAM_ADMIN_CHAT_ID: props.getProperty('TELEGRAM_ADMIN_CHAT_ID') || '',
     WEBHOOK_URL: props.getProperty('WEBHOOK_URL') || '',
     GEMINI_MIN_INTERVAL_MS: Number(props.getProperty('GEMINI_MIN_INTERVAL_MS') || '3000'),
+    GEMINI_DAILY_LIMIT: Number(props.getProperty('GEMINI_DAILY_LIMIT') || String(GEMINI_DAILY_LIMIT_PADRAO)),
     MAX_ARQUIVOS_POR_BATCH: Number(props.getProperty('MAX_ARQUIVOS_POR_BATCH') || '10')
   };
 }
@@ -181,6 +184,11 @@ function processarMensagemTexto_(chatId, message) {
     processarComandoHoje_(chatId);
     return;
   }
+
+  if (textoUsuario === '/status') {
+    processarComandoStatus_(chatId);
+    return;
+  }
   
   // Processamento normal de texto
   try {
@@ -236,6 +244,153 @@ function processarComandoHoje_(chatId) {
   } catch (erro) {
     Logger.log("Erro no comando /hoje: " + erro.toString());
     enviarResposta(chatId, "❌ Não foi possível gerar seu resumo do dia: " + erro.message);
+  }
+}
+
+function processarComandoStatus_(chatId) {
+  try {
+    const config = getConfig_();
+
+    const props = PropertiesService.getScriptProperties();
+    const modeloAtual = config.MODELO_IA;
+    const dataPacifico = obterDataPacificoAtual_();
+    const chaveContador = obterChaveContadorGemini_(modeloAtual, dataPacifico);
+    const requisicoesHoje = Number(props.getProperty(chaveContador) || '0');
+    const limiteInfo = obterLimiteDiarioGeminiModelo_(modeloAtual, props);
+    const restantesEstimadas = limiteInfo.limite > 0 ? Math.max(0, limiteInfo.limite - requisicoesHoje) : null;
+    const pendencias = contarPendenciasMarkdown_();
+    const webhookConfigurado = !!String(config.WEBHOOK_URL || '').trim();
+    const webhookResumo = webhookConfigurado ? config.WEBHOOK_URL : 'não configurado';
+    const janela = obterJanelaRpdPacifico_();
+
+    const linhas = [
+      "📊 Status do bot",
+      "🤖 Modelo atual: " + modeloAtual,
+      "📈 Requisições hoje (PT): " + requisicoesHoje,
+      "⏱️ Throttle Gemini: " + config.GEMINI_MIN_INTERVAL_MS + "ms",
+      "📦 Pendências .md: " + pendencias,
+      "🪝 Webhook: " + webhookResumo,
+      "",
+      "🕒 Janela RPD (Pacific): " + janela.inicioPacifico + " -> " + janela.fimPacifico,
+      "🇧🇷 Equivalente (São Paulo): " + janela.inicioSaoPaulo + " -> " + janela.fimSaoPaulo,
+      ""
+    ];
+
+    if (limiteInfo.limite > 0) {
+      linhas.push("🎯 Limite diário configurado: " + limiteInfo.limite + " (" + limiteInfo.chaveUsada + ")");
+      linhas.push("🧮 Restantes estimadas (janela PT): " + restantesEstimadas);
+    } else {
+      linhas.push("🎯 Limite diário: não configurado");
+      linhas.push("🧮 Restantes estimadas: configure " + limiteInfo.chaveSugerida + " (ou GEMINI_DAILY_LIMIT)");
+    }
+
+    enviarResposta(chatId, limitarMensagemTelegram_(linhas.join("\n")));
+  } catch (erro) {
+    Logger.log("Erro no comando /status: " + erro.toString());
+    enviarResposta(chatId, "❌ Não foi possível montar o status: " + erro.message);
+  }
+}
+
+function obterDataPacificoAtual_() {
+  return Utilities.formatDate(new Date(), 'America/Los_Angeles', 'yyyy-MM-dd');
+}
+
+function normalizarModeloParaChave_(modelo) {
+  return String(modelo || 'modelo_desconhecido')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function obterChaveContadorGemini_(modelo, dataPacifico) {
+  return 'GEMINI_RPD_' + normalizarModeloParaChave_(modelo) + '_' + dataPacifico;
+}
+
+function obterLimiteDiarioGeminiModelo_(modelo, props) {
+  const chaveModelo = 'GEMINI_DAILY_LIMIT_' + normalizarModeloParaChave_(modelo);
+  const valorModelo = Number((props.getProperty(chaveModelo) || '').trim());
+  if (!isNaN(valorModelo) && valorModelo > 0) {
+    return {
+      limite: valorModelo,
+      chaveUsada: chaveModelo,
+      chaveSugerida: chaveModelo
+    };
+  }
+
+  const valorGlobal = Number((props.getProperty('GEMINI_DAILY_LIMIT') || '').trim());
+  if (!isNaN(valorGlobal) && valorGlobal > 0) {
+    return {
+      limite: valorGlobal,
+      chaveUsada: 'GEMINI_DAILY_LIMIT',
+      chaveSugerida: chaveModelo
+    };
+  }
+
+  return {
+    limite: GEMINI_DAILY_LIMIT_PADRAO,
+    chaveUsada: 'GEMINI_DAILY_LIMIT_PADRAO',
+    chaveSugerida: chaveModelo
+  };
+}
+
+function obterOffsetMinutosTimezone_(data, timezone) {
+  const offset = Utilities.formatDate(data, timezone, 'Z');
+  const sinal = offset.charAt(0) === '-' ? -1 : 1;
+  const horas = Number(offset.substring(1, 3));
+  const minutos = Number(offset.substring(3, 5));
+  return sinal * ((horas * 60) + minutos);
+}
+
+function converterDataHoraTimezoneParaUtc_(ano, mes, dia, hora, minuto, segundo, timezone) {
+  let utcEstimado = Date.UTC(ano, mes - 1, dia, hora, minuto, segundo);
+
+  // Itera para estabilizar offset em dias de troca de DST.
+  for (let i = 0; i < 3; i++) {
+    const dataEstimativa = new Date(utcEstimado);
+    const offsetMinutos = obterOffsetMinutosTimezone_(dataEstimativa, timezone);
+    utcEstimado = Date.UTC(ano, mes - 1, dia, hora, minuto, segundo) - (offsetMinutos * 60000);
+  }
+
+  return new Date(utcEstimado);
+}
+
+function obterJanelaRpdPacifico_() {
+  const dataPacifico = obterDataPacificoAtual_();
+  const partes = dataPacifico.split('-').map(parte => Number(parte));
+  const ano = partes[0];
+  const mes = partes[1];
+  const dia = partes[2];
+
+  const inicioUtc = converterDataHoraTimezoneParaUtc_(ano, mes, dia, 0, 0, 0, 'America/Los_Angeles');
+  const fimUtc = converterDataHoraTimezoneParaUtc_(ano, mes, dia, 23, 59, 59, 'America/Los_Angeles');
+
+  return {
+    dataPacifico: dataPacifico,
+    inicioPacifico: Utilities.formatDate(inicioUtc, 'America/Los_Angeles', 'yyyy-MM-dd HH:mm:ss z'),
+    fimPacifico: Utilities.formatDate(fimUtc, 'America/Los_Angeles', 'yyyy-MM-dd HH:mm:ss z'),
+    inicioSaoPaulo: Utilities.formatDate(inicioUtc, 'America/Sao_Paulo', 'yyyy-MM-dd HH:mm:ss z'),
+    fimSaoPaulo: Utilities.formatDate(fimUtc, 'America/Sao_Paulo', 'yyyy-MM-dd HH:mm:ss z')
+  };
+}
+
+function contarPendenciasMarkdown_() {
+  try {
+    const config = getConfig_();
+    const pastaEntrada = DriveApp.getFolderById(config.FOLDER_ID);
+    const arquivos = pastaEntrada.getFilesByType(MimeType.PLAIN_TEXT);
+    let total = 0;
+
+    while (arquivos.hasNext()) {
+      const arquivo = arquivos.next();
+      if (arquivo.getName().toLowerCase().endsWith('.md')) {
+        total++;
+      }
+    }
+
+    return total;
+  } catch (erro) {
+    Logger.log('Erro ao contar pendências Markdown: ' + erro.toString());
+    return -1;
   }
 }
 
@@ -459,9 +614,17 @@ function aplicarThrottleGemini_() {
     }
 
     props.setProperty('GEMINI_LAST_REQUEST_TS', String(Date.now()));
+    incrementarContadorGeminiNoLock_(props, config.MODELO_IA);
   } finally {
     lock.releaseLock();
   }
+}
+
+function incrementarContadorGeminiNoLock_(props, modelo) {
+  const dataPacifico = obterDataPacificoAtual_();
+  const chaveContador = obterChaveContadorGemini_(modelo, dataPacifico);
+  const atual = Number(props.getProperty(chaveContador) || '0');
+  props.setProperty(chaveContador, String(atual + 1));
 }
 
 function obterEsperaRetryGemini_(res, tentativa) {

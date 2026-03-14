@@ -103,6 +103,8 @@ No editor do Google Apps Script, em `Project Settings > Script properties`, conf
 | `WEBHOOK_URL` | Não | URL pública do deploy Apps Script |
 | `TELEGRAM_ADMIN_CHAT_ID` | Não | Chat de notificação operacional |
 | `GEMINI_MIN_INTERVAL_MS` | Não | Intervalo mínimo entre chamadas ao Gemini |
+| `GEMINI_DAILY_LIMIT` | Não | Limite diário global (fallback) para estimativa de requisições restantes no `/status` (padrão: 20) |
+| `GEMINI_DAILY_LIMIT_<MODELO_NORMALIZADO>` | Não | Limite diário por modelo, por exemplo `GEMINI_DAILY_LIMIT_GEMINI_2_5_FLASH` |
 | `MAX_ARQUIVOS_POR_BATCH` | Não | Limite de arquivos por execução em lote |
 | `PROCESSAMENTO_DIARIO_HORA` | Não | Hora do trigger automático |
 | `PROCESSAMENTO_DIARIO_MINUTO` | Não | Minuto do trigger automático |
@@ -141,13 +143,21 @@ O webhook recebe mensagens em `doPost(e)` e distingue três cenários:
 
 - áudio ou voz
 - mensagem de texto
-- comandos operacionais, como `/modelo` e `/processar`
+- comandos operacionais, como `/modelo`, `/processar` e `/status`
 
 Para texto e áudio, o conteúdo é enviado ao Gemini e o retorno é salvo ou distribuído conforme o fluxo usado.
 
 Comando adicional disponível no Telegram:
 
 - `/hoje`: gera um resumo do dia com compromissos da agenda e tarefas (hoje + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
+- `/status`: mostra status operacional (modelo atual, throttle, webhook, pendências e consumo Gemini).
+
+Regras do consumo exibido no `/status`:
+
+- A contagem é por modelo (`MODELO_IA`) e por projeto.
+- O reset diário segue meia-noite do horário do Pacífico (`America/Los_Angeles`).
+- "Requisições restantes" é uma estimativa local baseada em `GEMINI_DAILY_LIMIT_<MODELO_NORMALIZADO>` (ou `GEMINI_DAILY_LIMIT` como fallback).
+- Se nenhum limite for configurado, o sistema usa `20` requisições/dia como padrão.
 
 Formato da nota gerada por `/hoje`:
 
