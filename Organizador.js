@@ -341,7 +341,7 @@ function gerarResumoDiaHoje_() {
   const tarefas = listarTarefasHojeEAtrasadas_();
   const resumoMarkdown = montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos, tarefas);
   const resumoTelegram = montarResumoDiaTelegram_(dataBr, fraseInspiradora, compromissos, tarefas);
-  const tagsResumo = ["#dailynote", "#resumo-dia", "#agenda", "#tarefas"];
+  const tagsResumo = ["#dailynote"];
 
   salvarResumoDiarioNoDrive_(dataIso, resumoMarkdown, tagsResumo);
 
@@ -437,10 +437,10 @@ function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromisso
   const linhas = [
     "## " + dataIso,
     "",
-    "> [!quote]- Reflexão para começar o dia",
+    "> [!quote] Reflexão para começar o dia",
     "> " + fraseInspiradora,
     "",
-    "> [!info]- Agenda do dia (" + dataBr + ")"
+    "> [!info] Agenda do dia (" + dataBr + ")"
   ];
 
   if (compromissos.length === 0) {

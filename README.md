@@ -152,11 +152,12 @@ Comando adicional disponível no Telegram:
 Formato da nota gerada por `/hoje`:
 
 - Título da entrada no formato `YYYY-MM-DD`
+- Arquivo diário dedicado no formato `YYYY-MM-DD.md` (atualiza o mesmo arquivo no dia)
 - Bloco de reflexão para começar o dia
 - Agenda em callout `info`
-- Tarefas em callout `todo`
+- Tarefas em callout `warning`
 - Itens de tarefa em checklist (`- [ ]`)
-- Tags sugeridas com `#dailynote`, `#resumo-dia`, `#agenda` e `#tarefas`
+- Tag sugerida: `#dailynote`
 
 ### Processamento em lote
 
