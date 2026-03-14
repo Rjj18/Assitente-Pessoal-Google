@@ -149,6 +149,15 @@ Comando adicional disponível no Telegram:
 
 - `/hoje`: gera um resumo do dia com compromissos da agenda e tarefas (hoje + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
 
+Formato da nota gerada por `/hoje`:
+
+- Título da entrada no formato `YYYY-MM-DD`
+- Bloco de reflexão para começar o dia
+- Agenda em callout `info`
+- Tarefas em callout `todo`
+- Itens de tarefa em checklist (`- [ ]`)
+- Tags sugeridas com `#dailynote`, `#resumo-dia`, `#agenda` e `#tarefas`
+
 ### Processamento em lote
 
 O comando `/processar` dispara a leitura de arquivos Markdown pendentes e envia o conteúdo para extração estruturada. Ao final, o sistema:

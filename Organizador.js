@@ -335,17 +335,18 @@ function gerarResumoDiaHoje_() {
   const dataAtual = new Date();
   const dataIso = Utilities.formatDate(dataAtual, "GMT-3", "yyyy-MM-dd");
   const dataBr = Utilities.formatDate(dataAtual, "GMT-3", "dd/MM/yyyy");
+  const fraseInspiradora = obterFraseInspiradoraDoDia_();
 
   const compromissos = listarCompromissosDoDia_();
   const tarefas = listarTarefasHojeEAtrasadas_();
-  const resumoMarkdown = montarResumoDiaMarkdown_(dataBr, compromissos, tarefas);
-  const resumoTelegram = montarResumoDiaTelegram_(dataBr, compromissos, tarefas);
+  const resumoMarkdown = montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos, tarefas);
+  const resumoTelegram = montarResumoDiaTelegram_(dataBr, fraseInspiradora, compromissos, tarefas);
 
   salvarNotasLivres([{
-    titulo: "Resumo do dia - " + dataBr,
+    titulo: "Resumo do dia " + dataIso,
     conteudo: resumoMarkdown,
     categoria: "work_routine",
-    tags_sugeridas: ["resumo-dia", "agenda", "tarefas"]
+    tags_sugeridas: ["dailynote", "resumo-dia", "agenda", "tarefas"]
   }]);
 
   return {
@@ -404,9 +405,10 @@ function listarTarefasHojeEAtrasadas_() {
     .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
 }
 
-function montarResumoDiaTelegram_(dataBr, compromissos, tarefas) {
+function montarResumoDiaTelegram_(dataBr, fraseInspiradora, compromissos, tarefas) {
   const linhas = [
     "📌 Resumo de hoje (" + dataBr + ")",
+    "💡 " + fraseInspiradora,
     "",
     "📅 Compromissos"
   ];
@@ -423,47 +425,71 @@ function montarResumoDiaTelegram_(dataBr, compromissos, tarefas) {
   linhas.push("", "✅ Tarefas (hoje + atrasadas)");
 
   if (tarefas.length === 0) {
-    linhas.push("- Nenhuma tarefa vencendo hoje ou atrasada.");
+    linhas.push("- [ ] Nenhuma tarefa vencendo hoje ou atrasada.");
   } else {
     tarefas.forEach(item => {
       const marcador = item.atrasada ? "⚠️" : "🕘";
       const dataVencimento = item.vencimento.split('-').reverse().join('/');
-      linhas.push("- " + marcador + " " + item.titulo + " (" + dataVencimento + ")");
+      linhas.push("- [ ] " + marcador + " " + item.titulo + " (" + dataVencimento + ")");
     });
   }
 
   return linhas.join("\n");
 }
 
-function montarResumoDiaMarkdown_(dataBr, compromissos, tarefas) {
+function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos, tarefas) {
   const linhas = [
-    "## Resumo do dia " + dataBr,
+    "## " + dataIso,
     "",
-    "### 📅 Compromissos"
+    "> [!quote]- Reflexão para começar o dia",
+    "> " + fraseInspiradora,
+    "",
+    "> [!info]- Agenda do dia (" + dataBr + ")"
   ];
 
   if (compromissos.length === 0) {
-    linhas.push("- Nenhum compromisso para hoje.");
+    linhas.push("> - Nenhum compromisso para hoje.");
   } else {
     compromissos.forEach(item => {
       const horario = item.diaTodo ? "Dia todo" : item.horario;
-      linhas.push("- **" + horario + "** — " + item.titulo);
+      linhas.push("> - **" + horario + "** — " + item.titulo);
     });
   }
 
-  linhas.push("", "### ✅ Tarefas (hoje + atrasadas)");
+  linhas.push("", "> [!todo]- Tarefas (hoje + atrasadas)");
 
   if (tarefas.length === 0) {
-    linhas.push("- Nenhuma tarefa vencendo hoje ou atrasada.");
+    linhas.push("> - [ ] Nenhuma tarefa vencendo hoje ou atrasada.");
   } else {
     tarefas.forEach(item => {
       const status = item.atrasada ? "atrasada" : "vence hoje";
       const dataVencimento = item.vencimento.split('-').reverse().join('/');
-      linhas.push("- " + item.titulo + " — " + dataVencimento + " (" + status + ")");
+      linhas.push("> - [ ] " + item.titulo + " — " + dataVencimento + " (" + status + ")");
     });
   }
 
   return linhas.join("\n");
+}
+
+function obterFraseInspiradoraDoDia_() {
+  const frases = [
+    "Comece pequeno, mas comece com consistência.",
+    "Seu foco de hoje constrói o resultado de amanhã.",
+    "Progresso diário vale mais que perfeição ocasional.",
+    "Uma tarefa de cada vez também é estratégia.",
+    "Clareza nas prioridades transforma o dia.",
+    "Disciplina leve e constante vence a pressa.",
+    "O melhor momento para organizar o dia é agora.",
+    "Feito com atenção é melhor que adiado por dúvida."
+  ];
+
+  const data = new Date();
+  const inicioAno = new Date(data.getFullYear(), 0, 0);
+  const diferenca = data - inicioAno;
+  const diaDoAno = Math.floor(diferenca / 86400000);
+  const indice = diaDoAno % frases.length;
+
+  return frases[indice];
 }
 
 function obterIntervaloHoje_() {
