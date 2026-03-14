@@ -329,6 +329,169 @@ function salvarNotasLivres(notas) {
   return contador;
 }
 
+// ==================== RESUMO DIÁRIO (TELEGRAM) ====================
+
+function gerarResumoDiaHoje_() {
+  const dataAtual = new Date();
+  const dataIso = Utilities.formatDate(dataAtual, "GMT-3", "yyyy-MM-dd");
+  const dataBr = Utilities.formatDate(dataAtual, "GMT-3", "dd/MM/yyyy");
+
+  const compromissos = listarCompromissosDoDia_();
+  const tarefas = listarTarefasHojeEAtrasadas_();
+  const resumoMarkdown = montarResumoDiaMarkdown_(dataBr, compromissos, tarefas);
+  const resumoTelegram = montarResumoDiaTelegram_(dataBr, compromissos, tarefas);
+
+  salvarNotasLivres([{
+    titulo: "Resumo do dia - " + dataBr,
+    conteudo: resumoMarkdown,
+    categoria: "work_routine",
+    tags_sugeridas: ["resumo-dia", "agenda", "tarefas"]
+  }]);
+
+  return {
+    dataIso: dataIso,
+    dataBr: dataBr,
+    totalCompromissos: compromissos.length,
+    totalTarefas: tarefas.length,
+    resumoMarkdown: resumoMarkdown,
+    resumoTelegram: resumoTelegram
+  };
+}
+
+function listarCompromissosDoDia_() {
+  const intervalo = obterIntervaloHoje_();
+  const response = Calendar.Events.list('primary', {
+    timeMin: intervalo.inicio.toISOString(),
+    timeMax: intervalo.fim.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 100
+  });
+
+  const eventos = response.items || [];
+  return eventos.map(evento => ({
+    titulo: evento.summary || 'Sem título',
+    horario: formatarHorarioEvento_(evento),
+    diaTodo: !!(evento.start && evento.start.date && !evento.start.dateTime)
+  }));
+}
+
+function listarTarefasHojeEAtrasadas_() {
+  const hoje = Utilities.formatDate(new Date(), "GMT-3", "yyyy-MM-dd");
+  const listaId = obterListaPadraoTasks();
+  const response = Tasks.Tasks.list(listaId, {
+    showCompleted: false,
+    showHidden: false,
+    maxResults: 100
+  });
+
+  const tarefas = response.items || [];
+
+  return tarefas
+    .filter(tarefa => !tarefa.completed)
+    .map(tarefa => {
+      const vencimento = tarefa.due
+        ? Utilities.formatDate(new Date(tarefa.due), "GMT-3", "yyyy-MM-dd")
+        : '';
+
+      return {
+        titulo: tarefa.title || 'Sem título',
+        vencimento: vencimento,
+        atrasada: !!(vencimento && vencimento < hoje)
+      };
+    })
+    .filter(tarefa => tarefa.vencimento && tarefa.vencimento <= hoje)
+    .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+}
+
+function montarResumoDiaTelegram_(dataBr, compromissos, tarefas) {
+  const linhas = [
+    "📌 Resumo de hoje (" + dataBr + ")",
+    "",
+    "📅 Compromissos"
+  ];
+
+  if (compromissos.length === 0) {
+    linhas.push("- Nenhum compromisso para hoje.");
+  } else {
+    compromissos.forEach(item => {
+      const horario = item.diaTodo ? "Dia todo" : item.horario;
+      linhas.push("- " + horario + " · " + item.titulo);
+    });
+  }
+
+  linhas.push("", "✅ Tarefas (hoje + atrasadas)");
+
+  if (tarefas.length === 0) {
+    linhas.push("- Nenhuma tarefa vencendo hoje ou atrasada.");
+  } else {
+    tarefas.forEach(item => {
+      const marcador = item.atrasada ? "⚠️" : "🕘";
+      const dataVencimento = item.vencimento.split('-').reverse().join('/');
+      linhas.push("- " + marcador + " " + item.titulo + " (" + dataVencimento + ")");
+    });
+  }
+
+  return linhas.join("\n");
+}
+
+function montarResumoDiaMarkdown_(dataBr, compromissos, tarefas) {
+  const linhas = [
+    "## Resumo do dia " + dataBr,
+    "",
+    "### 📅 Compromissos"
+  ];
+
+  if (compromissos.length === 0) {
+    linhas.push("- Nenhum compromisso para hoje.");
+  } else {
+    compromissos.forEach(item => {
+      const horario = item.diaTodo ? "Dia todo" : item.horario;
+      linhas.push("- **" + horario + "** — " + item.titulo);
+    });
+  }
+
+  linhas.push("", "### ✅ Tarefas (hoje + atrasadas)");
+
+  if (tarefas.length === 0) {
+    linhas.push("- Nenhuma tarefa vencendo hoje ou atrasada.");
+  } else {
+    tarefas.forEach(item => {
+      const status = item.atrasada ? "atrasada" : "vence hoje";
+      const dataVencimento = item.vencimento.split('-').reverse().join('/');
+      linhas.push("- " + item.titulo + " — " + dataVencimento + " (" + status + ")");
+    });
+  }
+
+  return linhas.join("\n");
+}
+
+function obterIntervaloHoje_() {
+  const inicio = new Date();
+  inicio.setHours(0, 0, 0, 0);
+
+  const fim = new Date(inicio);
+  fim.setDate(fim.getDate() + 1);
+
+  return { inicio: inicio, fim: fim };
+}
+
+function formatarHorarioEvento_(evento) {
+  if (!evento || !evento.start) {
+    return 'Sem horário';
+  }
+
+  if (evento.start.dateTime) {
+    return Utilities.formatDate(new Date(evento.start.dateTime), "GMT-3", "HH:mm");
+  }
+
+  if (evento.start.date) {
+    return 'Dia todo';
+  }
+
+  return 'Sem horário';
+}
+
 // ==================== DISTRIBUIDOR PRINCIPAL ====================
 
 /**

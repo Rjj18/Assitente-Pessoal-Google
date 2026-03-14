@@ -3,6 +3,7 @@
 const MENSAGENS = {
   PROCESSANDO_VOZ: "⏳ Recebido! Processando sua voz...",
   PROCESSANDO_TEXTO: "⏳ Estruturando sua mensagem...",
+  PROCESSANDO_RESUMO_DIA: "⏳ Montando seu resumo do dia...",
   SUCESSO: "✅ Nota salva com sucesso!",
   ERRO_GEMINI: "❌ Não foi possível processar. Tente novamente.",
   ERRO_LIMITE_GEMINI: "⚠️ A API do Gemini atingiu o limite temporário de requisições. Tente novamente em alguns minutos.",
@@ -175,6 +176,11 @@ function processarMensagemTexto_(chatId, message) {
     
     return;
   }
+
+  if (textoUsuario === '/hoje') {
+    processarComandoHoje_(chatId);
+    return;
+  }
   
   // Processamento normal de texto
   try {
@@ -213,6 +219,39 @@ function processarComandoModelo_(chatId, textoUsuario) {
 
   PropertiesService.getScriptProperties().setProperty('MODELO_IA', novoModelo);
   enviarResposta(chatId, "✅ Modelo atualizado para: " + novoModelo);
+}
+
+function processarComandoHoje_(chatId) {
+  enviarResposta(chatId, MENSAGENS.PROCESSANDO_RESUMO_DIA);
+
+  try {
+    const resumo = gerarResumoDiaHoje_();
+
+    const mensagem = resumo.resumoTelegram +
+      "\n\n📌 Nota salva no Drive." +
+      "\n📅 Compromissos: " + resumo.totalCompromissos +
+      "\n✅ Tarefas: " + resumo.totalTarefas;
+
+    enviarResposta(chatId, limitarMensagemTelegram_(mensagem));
+  } catch (erro) {
+    Logger.log("Erro no comando /hoje: " + erro.toString());
+    enviarResposta(chatId, "❌ Não foi possível gerar seu resumo do dia: " + erro.message);
+  }
+}
+
+function limitarMensagemTelegram_(texto) {
+  const limite = 4096;
+  const textoLimpo = String(texto || '').trim();
+
+  if (!textoLimpo) {
+    return '';
+  }
+
+  if (textoLimpo.length <= limite) {
+    return textoLimpo;
+  }
+
+  return textoLimpo.substring(0, limite - 20) + "\n\n...(resumo truncado)";
 }
 
 function finalizarProcessamento_(chatId, markdown) {

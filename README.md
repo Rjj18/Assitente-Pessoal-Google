@@ -145,6 +145,10 @@ O webhook recebe mensagens em `doPost(e)` e distingue três cenários:
 
 Para texto e áudio, o conteúdo é enviado ao Gemini e o retorno é salvo ou distribuído conforme o fluxo usado.
 
+Comando adicional disponível no Telegram:
+
+- `/hoje`: gera um resumo do dia com compromissos da agenda e tarefas (hoje + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
+
 ### Processamento em lote
 
 O comando `/processar` dispara a leitura de arquivos Markdown pendentes e envia o conteúdo para extração estruturada. Ao final, o sistema:
