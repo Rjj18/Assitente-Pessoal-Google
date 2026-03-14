@@ -341,13 +341,9 @@ function gerarResumoDiaHoje_() {
   const tarefas = listarTarefasHojeEAtrasadas_();
   const resumoMarkdown = montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos, tarefas);
   const resumoTelegram = montarResumoDiaTelegram_(dataBr, fraseInspiradora, compromissos, tarefas);
+  const tagsResumo = ["#dailynote", "#resumo-dia", "#agenda", "#tarefas"];
 
-  salvarNotasLivres([{
-    titulo: "Resumo do dia " + dataIso,
-    conteudo: resumoMarkdown,
-    categoria: "work_routine",
-    tags_sugeridas: ["dailynote", "resumo-dia", "agenda", "tarefas"]
-  }]);
+  salvarResumoDiarioNoDrive_(dataIso, resumoMarkdown, tagsResumo);
 
   return {
     dataIso: dataIso,
@@ -456,7 +452,7 @@ function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromisso
     });
   }
 
-  linhas.push("", "> [!todo]- Tarefas (hoje + atrasadas)");
+  linhas.push("", "> [!warning] Tarefas (hoje + atrasadas)");
 
   if (tarefas.length === 0) {
     linhas.push("> - [ ] Nenhuma tarefa vencendo hoje ou atrasada.");
@@ -469,6 +465,25 @@ function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromisso
   }
 
   return linhas.join("\n");
+}
+
+function salvarResumoDiarioNoDrive_(dataIso, conteudoMarkdown, tags) {
+  const config = getConfig_();
+  const pastaNotas = DriveApp.getFolderById(config.GENERAL_NOTES_FOLDER_ID);
+  const nomeArquivo = dataIso + ".md";
+  const tagsTexto = (tags || []).join(' ');
+  const conteudoFinal = conteudoMarkdown + "\n\n" + tagsTexto + "\n";
+
+  const arquivosExistentes = pastaNotas.getFilesByName(nomeArquivo);
+  if (arquivosExistentes.hasNext()) {
+    const arquivo = arquivosExistentes.next();
+    arquivo.setContent(conteudoFinal);
+    Logger.log("[ORGANIZADOR] Resumo diário atualizado: " + nomeArquivo);
+    return;
+  }
+
+  pastaNotas.createFile(nomeArquivo, conteudoFinal, MimeType.PLAIN_TEXT);
+  Logger.log("[ORGANIZADOR] Resumo diário criado: " + nomeArquivo);
 }
 
 function obterFraseInspiradoraDoDia_() {
