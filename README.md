@@ -234,7 +234,7 @@ sudo docker exec workspace-gas sh -c 'cd /workspace && clasp push'
 
 - Alterações em prompt e contrato JSON devem ser refletidas no módulo que persiste as notas
 - Mudanças de nomenclatura de arquivos locais devem ser verificadas antes do `clasp push`
-- O repositório Git e o projeto Apps Script têm ciclos de deploy distintos; `git push` não publica no GAS
+
 
 ## Repositório
 
