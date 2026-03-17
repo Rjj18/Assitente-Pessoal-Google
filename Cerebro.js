@@ -11,7 +11,7 @@ function extrairDadosComIA(textoMarkdown) {
   const horaAtual = Utilities.formatDate(new Date(), "GMT-3", "HH:mm");
   
   const prompt = `Você é um assistente de produtividade. Hoje é ${dataAtual} às ${horaAtual}.
-Leia a transcrição abaixo e extraia as informações estruturadas.
+Leia a captura em Markdown abaixo e extraia apenas informações estruturadas realmente suportadas pelo texto.
 
 Retorne APENAS um JSON válido e puro, sem blocos de código Markdown (\`\`\`json). O formato exato deve ser este (deixe os arrays vazios se não houver dados):
 {
@@ -45,17 +45,27 @@ REGRAS PARA TAREFAS:
 Extraia APENAS se houver sinal explícito de compromisso:
 - "preciso", "tenho que", "vou", "não posso esquecer", "me lembra de"
 - Itens listados claramente como pendências.
+- Checklists ou bullets com ação objetiva e executável.
 Nunca extraia: verbos sem dono ("a gente resolve"), ideias hipotéticas ("seria legal"), ou planos vagos sem dono/prazo.
+Se houver dúvida entre nota e tarefa, prefira nota.
 
 REGRAS PARA NOTAS:
 - Categorize estritamente em uma das 5 opções definidas.
 - "work_routine" refere-se ao mapeamento das atividades diárias de trabalho.
 - Gere até 3 "tags_sugeridas" relevantes para indexação em sistemas PKM.
+- Preserve conteúdo factual e útil para consulta posterior; não resuma em excesso.
 
 REGRAS PARA EVENTOS:
 - Converta expressões ("amanhã", "próxima sexta às 15h") para os campos de data e hora corretos.
 - Se o ano não for dito, presuma o ano atual.
 - Se não identificar data/hora exata, use null.
+- Só crie evento quando houver indício de compromisso agendável, reunião, consulta, viagem, visita, prazo com data, ou bloco temporal claro.
+- Se existir data mas não houver hora, mantenha hora_inicio e hora_fim como null.
+
+REGRAS GERAIS:
+- Não invente dados ausentes.
+- Remova duplicidades sem perder informação.
+- Considere títulos e bullets da captura como sinais de prioridade, mas não como prova suficiente para criar tarefa ou evento sem conteúdo explícito.
 
 Texto a ser analisado:
 ${textoMarkdown}`;
