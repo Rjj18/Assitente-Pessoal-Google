@@ -355,22 +355,103 @@ function gerarResumoDiaHoje_() {
   };
 }
 
+function gerarResumoSemanaAtual_() {
+  const intervalo = obterIntervaloSemanaAtual_();
+  const dataIsoInicio = Utilities.formatDate(intervalo.inicio, "GMT-3", "yyyy-MM-dd");
+  const dataIsoFim = Utilities.formatDate(new Date(intervalo.fim.getTime() - 1), "GMT-3", "yyyy-MM-dd");
+  const dataBrInicio = Utilities.formatDate(intervalo.inicio, "GMT-3", "dd/MM/yyyy");
+  const dataBrFim = Utilities.formatDate(new Date(intervalo.fim.getTime() - 1), "GMT-3", "dd/MM/yyyy");
+  const fraseInspiradora = obterFraseInspiradoraDoDia_();
+
+  const compromissos = listarCompromissosNoIntervalo_(intervalo, 'RESUMO-SEMANA');
+  const tarefas = listarTarefasSemanaEAtrasadas_(intervalo);
+  const resumoMarkdown = montarResumoSemanaMarkdown_(dataIsoInicio, dataIsoFim, dataBrInicio, dataBrFim, fraseInspiradora, compromissos, tarefas);
+  const resumoTelegram = montarResumoSemanaTelegram_(dataBrInicio, dataBrFim, fraseInspiradora, compromissos, tarefas);
+  const tagsResumo = ["#weeklynote", "#resumo-semana", "#agenda", "#tarefas"];
+
+  salvarResumoSemanalNoDrive_(dataIsoInicio, dataIsoFim, resumoMarkdown, tagsResumo);
+
+  return {
+    dataIsoInicio: dataIsoInicio,
+    dataIsoFim: dataIsoFim,
+    dataBrInicio: dataBrInicio,
+    dataBrFim: dataBrFim,
+    totalCompromissos: compromissos.length,
+    totalTarefas: tarefas.length,
+    resumoMarkdown: resumoMarkdown,
+    resumoTelegram: resumoTelegram
+  };
+}
+
 function listarCompromissosDoDia_() {
   const intervalo = obterIntervaloHoje_();
-  const response = Calendar.Events.list('primary', {
-    timeMin: intervalo.inicio.toISOString(),
-    timeMax: intervalo.fim.toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 100
-  });
+  return listarCompromissosNoIntervalo_(intervalo, 'RESUMO-DIA');
+}
 
-  const eventos = response.items || [];
-  return eventos.map(evento => ({
-    titulo: evento.summary || 'Sem título',
-    horario: formatarHorarioEvento_(evento),
-    diaTodo: !!(evento.start && evento.start.date && !evento.start.dateTime)
-  }));
+function listarCompromissosNoIntervalo_(intervalo, contextoLog) {
+  const eventosAgregados = [];
+  let paginaCalendarios;
+
+  do {
+    const respostaCalendarios = Calendar.CalendarList.list({
+      pageToken: paginaCalendarios,
+      showDeleted: false,
+      showHidden: false,
+      maxResults: 250
+    });
+
+    const calendarios = respostaCalendarios.items || [];
+
+    calendarios.forEach(calendario => {
+      if (!calendario || !calendario.id) {
+        return;
+      }
+
+      try {
+        let paginaEventos;
+        do {
+          const response = Calendar.Events.list(calendario.id, {
+            timeMin: intervalo.inicio.toISOString(),
+            timeMax: intervalo.fim.toISOString(),
+            singleEvents: true,
+            orderBy: 'startTime',
+            maxResults: 250,
+            pageToken: paginaEventos
+          });
+
+          const eventos = response.items || [];
+          eventos.forEach(evento => {
+            eventosAgregados.push({
+              titulo: evento.summary || 'Sem título',
+              horario: formatarHorarioEvento_(evento),
+              diaTodo: !!(evento.start && evento.start.date && !evento.start.dateTime),
+              _ordem: (evento.start && (evento.start.dateTime || evento.start.date)) || ''
+            });
+          });
+
+          paginaEventos = response.nextPageToken;
+        } while (paginaEventos);
+      } catch (erro) {
+        Logger.log('[' + contextoLog + '] Não foi possível listar eventos do calendário ' + calendario.id + ': ' + erro.toString());
+      }
+    });
+
+    paginaCalendarios = respostaCalendarios.nextPageToken;
+  } while (paginaCalendarios);
+
+  return eventosAgregados
+    .sort((a, b) => {
+      const ordem = String(a._ordem || '').localeCompare(String(b._ordem || ''));
+      if (ordem !== 0) {
+        return ordem;
+      }
+      return String(a.titulo || '').localeCompare(String(b.titulo || ''));
+    })
+    .map(item => ({
+      titulo: item.titulo,
+      horario: item.horario,
+      diaTodo: item.diaTodo
+    }));
 }
 
 function listarTarefasHojeEAtrasadas_() {
@@ -398,6 +479,35 @@ function listarTarefasHojeEAtrasadas_() {
       };
     })
     .filter(tarefa => tarefa.vencimento && tarefa.vencimento <= hoje)
+    .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+}
+
+function listarTarefasSemanaEAtrasadas_(intervalo) {
+  const fimSemana = Utilities.formatDate(new Date(intervalo.fim.getTime() - 1), "GMT-3", "yyyy-MM-dd");
+  const hoje = Utilities.formatDate(new Date(), "GMT-3", "yyyy-MM-dd");
+  const listaId = obterListaPadraoTasks();
+  const response = Tasks.Tasks.list(listaId, {
+    showCompleted: false,
+    showHidden: false,
+    maxResults: 100
+  });
+
+  const tarefas = response.items || [];
+
+  return tarefas
+    .filter(tarefa => !tarefa.completed)
+    .map(tarefa => {
+      const vencimento = tarefa.due
+        ? Utilities.formatDate(new Date(tarefa.due), "GMT-3", "yyyy-MM-dd")
+        : '';
+
+      return {
+        titulo: tarefa.title || 'Sem título',
+        vencimento: vencimento,
+        atrasada: !!(vencimento && vencimento < hoje)
+      };
+    })
+    .filter(tarefa => tarefa.vencimento && tarefa.vencimento <= fimSemana)
     .sort((a, b) => a.vencimento.localeCompare(b.vencimento));
 }
 
@@ -467,6 +577,72 @@ function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromisso
   return linhas.join("\n");
 }
 
+function montarResumoSemanaTelegram_(dataBrInicio, dataBrFim, fraseInspiradora, compromissos, tarefas) {
+  const linhas = [
+    "📌 Resumo da semana (" + dataBrInicio + " a " + dataBrFim + ")",
+    "💡 " + fraseInspiradora,
+    "",
+    "📅 Compromissos"
+  ];
+
+  if (compromissos.length === 0) {
+    linhas.push("- Nenhum compromisso nesta semana.");
+  } else {
+    compromissos.forEach(item => {
+      const horario = item.diaTodo ? "Dia todo" : item.horario;
+      linhas.push("- " + horario + " · " + item.titulo);
+    });
+  }
+
+  linhas.push("", "✅ Tarefas (semana + atrasadas)");
+
+  if (tarefas.length === 0) {
+    linhas.push("- [ ] Nenhuma tarefa para a semana ou atrasada.");
+  } else {
+    tarefas.forEach(item => {
+      const marcador = item.atrasada ? "⚠️" : "🕘";
+      const dataVencimento = item.vencimento.split('-').reverse().join('/');
+      linhas.push("- [ ] " + marcador + " " + item.titulo + " (" + dataVencimento + ")");
+    });
+  }
+
+  return linhas.join("\n");
+}
+
+function montarResumoSemanaMarkdown_(dataIsoInicio, dataIsoFim, dataBrInicio, dataBrFim, fraseInspiradora, compromissos, tarefas) {
+  const linhas = [
+    "## Semana " + dataIsoInicio + " a " + dataIsoFim,
+    "",
+    "> [!quote]- Reflexão para a semana",
+    "> " + fraseInspiradora,
+    "",
+    "> [!info]- Agenda da semana (" + dataBrInicio + " a " + dataBrFim + ")"
+  ];
+
+  if (compromissos.length === 0) {
+    linhas.push("> - Nenhum compromisso nesta semana.");
+  } else {
+    compromissos.forEach(item => {
+      const horario = item.diaTodo ? "Dia todo" : item.horario;
+      linhas.push("> - **" + horario + "** — " + item.titulo);
+    });
+  }
+
+  linhas.push("", "> [!warning] Tarefas (semana + atrasadas)");
+
+  if (tarefas.length === 0) {
+    linhas.push("> - [ ] Nenhuma tarefa para a semana ou atrasada.");
+  } else {
+    tarefas.forEach(item => {
+      const status = item.atrasada ? "atrasada" : "nesta semana";
+      const dataVencimento = item.vencimento.split('-').reverse().join('/');
+      linhas.push("> - [ ] " + item.titulo + " — " + dataVencimento + " (" + status + ")");
+    });
+  }
+
+  return linhas.join("\n");
+}
+
 function salvarResumoDiarioNoDrive_(dataIso, conteudoMarkdown, tags) {
   const config = getConfig_();
   const pastaNotas = DriveApp.getFolderById(config.GENERAL_NOTES_FOLDER_ID);
@@ -484,6 +660,25 @@ function salvarResumoDiarioNoDrive_(dataIso, conteudoMarkdown, tags) {
 
   pastaNotas.createFile(nomeArquivo, conteudoFinal, MimeType.PLAIN_TEXT);
   Logger.log("[ORGANIZADOR] Resumo diário criado: " + nomeArquivo);
+}
+
+function salvarResumoSemanalNoDrive_(dataIsoInicio, dataIsoFim, conteudoMarkdown, tags) {
+  const config = getConfig_();
+  const pastaNotas = DriveApp.getFolderById(config.GENERAL_NOTES_FOLDER_ID);
+  const nomeArquivo = "semana-" + dataIsoInicio + "_" + dataIsoFim + ".md";
+  const tagsTexto = (tags || []).join(' ');
+  const conteudoFinal = conteudoMarkdown + "\n\n" + tagsTexto + "\n";
+
+  const arquivosExistentes = pastaNotas.getFilesByName(nomeArquivo);
+  if (arquivosExistentes.hasNext()) {
+    const arquivo = arquivosExistentes.next();
+    arquivo.setContent(conteudoFinal);
+    Logger.log("[ORGANIZADOR] Resumo semanal atualizado: " + nomeArquivo);
+    return;
+  }
+
+  pastaNotas.createFile(nomeArquivo, conteudoFinal, MimeType.PLAIN_TEXT);
+  Logger.log("[ORGANIZADOR] Resumo semanal criado: " + nomeArquivo);
 }
 
 function obterFraseInspiradoraDoDia_() {
@@ -513,6 +708,20 @@ function obterIntervaloHoje_() {
 
   const fim = new Date(inicio);
   fim.setDate(fim.getDate() + 1);
+
+  return { inicio: inicio, fim: fim };
+}
+
+function obterIntervaloSemanaAtual_() {
+  const inicio = new Date();
+  inicio.setHours(0, 0, 0, 0);
+
+  const diaSemana = inicio.getDay();
+  const diasDesdeSegunda = (diaSemana + 6) % 7;
+  inicio.setDate(inicio.getDate() - diasDesdeSegunda);
+
+  const fim = new Date(inicio);
+  fim.setDate(fim.getDate() + 7);
 
   return { inicio: inicio, fim: fim };
 }

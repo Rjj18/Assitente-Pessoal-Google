@@ -4,6 +4,7 @@ const MENSAGENS = {
   PROCESSANDO_VOZ: "⏳ Recebido! Processando sua voz...",
   PROCESSANDO_TEXTO: "⏳ Estruturando sua mensagem...",
   PROCESSANDO_RESUMO_DIA: "⏳ Montando seu resumo do dia...",
+  PROCESSANDO_RESUMO_SEMANA: "⏳ Montando seu resumo da semana...",
   SUCESSO: "✅ Nota salva com sucesso!",
   ERRO_GEMINI: "❌ Não foi possível processar. Tente novamente.",
   ERRO_LIMITE_GEMINI: "⚠️ A API do Gemini atingiu o limite temporário de requisições. Tente novamente em alguns minutos.",
@@ -185,6 +186,11 @@ function processarMensagemTexto_(chatId, message) {
     return;
   }
 
+  if (textoUsuario === '/semana') {
+    processarComandoSemana_(chatId);
+    return;
+  }
+
   if (textoUsuario === '/status') {
     processarComandoStatus_(chatId);
     return;
@@ -244,6 +250,24 @@ function processarComandoHoje_(chatId) {
   } catch (erro) {
     Logger.log("Erro no comando /hoje: " + erro.toString());
     enviarResposta(chatId, "❌ Não foi possível gerar seu resumo do dia: " + erro.message);
+  }
+}
+
+function processarComandoSemana_(chatId) {
+  enviarResposta(chatId, MENSAGENS.PROCESSANDO_RESUMO_SEMANA);
+
+  try {
+    const resumo = gerarResumoSemanaAtual_();
+
+    const mensagem = resumo.resumoTelegram +
+      "\n\n📌 Nota salva no Drive." +
+      "\n📅 Compromissos: " + resumo.totalCompromissos +
+      "\n✅ Tarefas: " + resumo.totalTarefas;
+
+    enviarResposta(chatId, limitarMensagemTelegram_(mensagem));
+  } catch (erro) {
+    Logger.log("Erro no comando /semana: " + erro.toString());
+    enviarResposta(chatId, "❌ Não foi possível gerar seu resumo da semana: " + erro.message);
   }
 }
 

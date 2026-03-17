@@ -150,6 +150,7 @@ Para texto e áudio, o conteúdo é enviado ao Gemini e o retorno é salvo ou di
 Comando adicional disponível no Telegram:
 
 - `/hoje`: gera um resumo do dia com compromissos da agenda e tarefas (hoje + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
+- `/semana`: gera um resumo da semana atual com compromissos da agenda e tarefas (semana + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
 - `/status`: mostra status operacional (modelo atual, throttle, webhook, pendências e consumo Gemini).
 
 Regras do consumo exibido no `/status`:
