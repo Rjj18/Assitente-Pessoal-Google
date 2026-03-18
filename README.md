@@ -166,8 +166,6 @@ Formato da nota gerada por `/hoje`:
 - Arquivo diário dedicado no formato `YYYY-MM-DD.md` (atualiza o mesmo arquivo no dia)
 - Bloco de reflexão para começar o dia
 - Agenda em callout `info`
-- Tarefas em callout `warning`
-- Itens de tarefa em checklist (`- [ ]`)
 - Tag sugerida: `#dailynote`
 
 ### Processamento em lote

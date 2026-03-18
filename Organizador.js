@@ -339,9 +339,9 @@ function gerarResumoDiaHoje_() {
 
   const compromissos = listarCompromissosDoDia_();
   const tarefas = listarTarefasHojeEAtrasadas_();
-  const resumoMarkdown = montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos, tarefas);
+  const resumoMarkdown = montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos);
   const resumoTelegram = montarResumoDiaTelegram_(dataBr, fraseInspiradora, compromissos, tarefas);
-  const tagsResumo = ["#dailynote", "#resumo-dia", "#agenda", "#tarefas"];
+  const tagsResumo = ["#dailynote", "#resumo-dia", "#agenda"];
 
   salvarResumoDiarioNoDrive_(dataIso, resumoMarkdown, tagsResumo);
 
@@ -543,7 +543,7 @@ function montarResumoDiaTelegram_(dataBr, fraseInspiradora, compromissos, tarefa
   return linhas.join("\n");
 }
 
-function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos, tarefas) {
+function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromissos) {
   const linhas = [
     "## " + dataIso,
     "",
@@ -559,18 +559,6 @@ function montarResumoDiaMarkdown_(dataIso, dataBr, fraseInspiradora, compromisso
     compromissos.forEach(item => {
       const horario = item.diaTodo ? "Dia todo" : item.horario;
       linhas.push("> - **" + horario + "** — " + item.titulo);
-    });
-  }
-
-  linhas.push("", "> [!warning] Tarefas (hoje + atrasadas)");
-
-  if (tarefas.length === 0) {
-    linhas.push("> - [ ] Nenhuma tarefa vencendo hoje ou atrasada.");
-  } else {
-    tarefas.forEach(item => {
-      const status = item.atrasada ? "atrasada" : "vence hoje";
-      const dataVencimento = item.vencimento.split('-').reverse().join('/');
-      linhas.push("> - [ ] " + item.titulo + " — " + dataVencimento + " (" + status + ")");
     });
   }
 
