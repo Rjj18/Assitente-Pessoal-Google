@@ -70,7 +70,14 @@ function getConfig_() {
 function doPost(e) {
   try {
     const data = parseWebhookData_(e);
-    if (!data || !data.message) return;
+    if (!data) return;
+
+    if (data.callback_query) {
+      processarCallbackQuery_(data.callback_query);
+      return;
+    }
+
+    if (!data.message) return;
     
     const chatId = data.message.chat.id;
     const message = data.message;
@@ -87,6 +94,45 @@ function doPost(e) {
   } catch (err) {
     handleErro_(e, err);
   }
+}
+
+function processarCallbackQuery_(callbackQuery) {
+  const callbackId = callbackQuery && callbackQuery.id;
+  const callbackData = String((callbackQuery && callbackQuery.data) || '').trim();
+  const chatId = callbackQuery && callbackQuery.message && callbackQuery.message.chat
+    ? callbackQuery.message.chat.id
+    : null;
+
+  if (callbackId) {
+    responderCallbackQuery_(callbackId);
+  }
+
+  if (!chatId || !callbackData) {
+    return;
+  }
+
+  const prefixoModelo = 'modelo:';
+  const prefixoComando = 'cmd:';
+
+  if (callbackData.indexOf(prefixoComando) === 0) {
+    const comando = callbackData.substring(prefixoComando.length).trim();
+    if (!executarComandoTelegram_(chatId, comando)) {
+      enviarResposta(chatId, "⚠️ Comando inválido no botão. Use /cmd para abrir o menu novamente.");
+    }
+    return;
+  }
+
+  if (callbackData.indexOf(prefixoModelo) !== 0) {
+    return;
+  }
+
+  const novoModelo = callbackData.substring(prefixoModelo.length).trim();
+  if (!novoModelo) {
+    enviarResposta(chatId, "❌ Modelo inválido recebido no botão. Use /modelo para tentar novamente.");
+    return;
+  }
+
+  atualizarModeloSelecionado_(chatId, novoModelo, true);
 }
 
 // ==================== VALIDADORES ====================
@@ -146,13 +192,40 @@ function processarMensagemAudio_(chatId, message) {
 function processarMensagemTexto_(chatId, message) {
   const textoUsuario = message.text.trim();
 
-  if (textoUsuario === '/modelo' || textoUsuario.startsWith('/modelo ')) {
-    processarComandoModelo_(chatId, textoUsuario);
+  if (executarComandoTelegram_(chatId, textoUsuario)) {
     return;
   }
-  
+
+  // Processamento normal de texto
+  try {
+    enviarResposta(chatId, MENSAGENS.PROCESSANDO_TEXTO);
+    const markdown = processarTextoComGemini_(textoUsuario);
+    finalizarProcessamento_(chatId, markdown);
+  } catch (erro) {
+    if (isGeminiRateLimitError_(erro)) {
+      enviarResposta(chatId, MENSAGENS.ERRO_LIMITE_GEMINI);
+      notificarRateLimitGemini_("Fluxo de texto");
+      return;
+    }
+    throw erro;
+  }
+}
+
+function executarComandoTelegram_(chatId, textoComando) {
+  const comando = String(textoComando || '').trim();
+
+  if (comando === '/cmd') {
+    processarComandoMenu_(chatId);
+    return true;
+  }
+
+  if (comando === '/modelo' || comando.startsWith('/modelo ')) {
+    processarComandoModelo_(chatId, comando);
+    return true;
+  }
+
   // Verifica se é o comando /processar
-  if (textoUsuario === '/processar') {
+  if (comando === '/processar') {
     enviarResposta(chatId, "⏳ Iniciando processamento de arquivos...");
     
     try {
@@ -177,38 +250,49 @@ function processarMensagemTexto_(chatId, message) {
       enviarResposta(chatId, "❌ Erro ao processar: " + erro.message);
       Logger.log("Erro no comando /processar: " + erro.toString());
     }
-    
-    return;
+
+    return true;
   }
 
-  if (textoUsuario === '/hoje') {
+  if (comando === '/hoje') {
     processarComandoHoje_(chatId);
-    return;
+    return true;
   }
 
-  if (textoUsuario === '/semana') {
+  if (comando === '/semana') {
     processarComandoSemana_(chatId);
-    return;
+    return true;
   }
 
-  if (textoUsuario === '/status') {
+  if (comando === '/status') {
     processarComandoStatus_(chatId);
-    return;
+    return true;
   }
-  
-  // Processamento normal de texto
-  try {
-    enviarResposta(chatId, MENSAGENS.PROCESSANDO_TEXTO);
-    const markdown = processarTextoComGemini_(textoUsuario);
-    finalizarProcessamento_(chatId, markdown);
-  } catch (erro) {
-    if (isGeminiRateLimitError_(erro)) {
-      enviarResposta(chatId, MENSAGENS.ERRO_LIMITE_GEMINI);
-      notificarRateLimitGemini_("Fluxo de texto");
-      return;
-    }
-    throw erro;
-  }
+
+  return false;
+}
+
+function processarComandoMenu_(chatId) {
+  const resposta = "🧭 Escolha um comando:";
+  enviarResposta(chatId, resposta, montarTecladoComandos_());
+}
+
+function montarTecladoComandos_() {
+  return {
+    inline_keyboard: [
+      [
+        { text: '🤖 /modelo', callback_data: 'cmd:/modelo' },
+        { text: '📊 /status', callback_data: 'cmd:/status' }
+      ],
+      [
+        { text: '📅 /hoje', callback_data: 'cmd:/hoje' },
+        { text: '🗓️ /semana', callback_data: 'cmd:/semana' }
+      ],
+      [
+        { text: '⚙️ /processar', callback_data: 'cmd:/processar' }
+      ]
+    ]
+  };
 }
 
 function processarComandoModelo_(chatId, textoUsuario) {
@@ -220,19 +304,43 @@ function processarComandoModelo_(chatId, textoUsuario) {
     const resposta = "🤖 Modelo atual: " + config.MODELO_IA +
       "\n\nModelos permitidos:" +
       "\n- " + modelosPermitidos.join("\n- ") +
-      "\n\nPara trocar: /modelo nome-do-modelo";
-    enviarResposta(chatId, resposta);
+      "\n\nEscolha nos botões abaixo ou use: /modelo nome-do-modelo";
+    enviarResposta(chatId, resposta, montarTecladoModelos_(modelosPermitidos, config.MODELO_IA));
     return;
   }
 
   const novoModelo = partes.slice(1).join(' ').trim();
+  atualizarModeloSelecionado_(chatId, novoModelo, false);
+}
+
+function atualizarModeloSelecionado_(chatId, novoModelo, origemBotao) {
+  const config = getConfig_();
+  const modelosPermitidos = config.MODELOS_PERMITIDOS.split(',').map(modelo => modelo.trim()).filter(modelo => modelo);
+
   if (modelosPermitidos.indexOf(novoModelo) === -1) {
     enviarResposta(chatId, "❌ Modelo não permitido: " + novoModelo + "\nUse /modelo para ver a lista disponível.");
     return;
   }
 
+  if (config.MODELO_IA === novoModelo) {
+    enviarResposta(chatId, "ℹ️ Esse modelo já está ativo: " + novoModelo);
+    return;
+  }
+
   PropertiesService.getScriptProperties().setProperty('MODELO_IA', novoModelo);
-  enviarResposta(chatId, "✅ Modelo atualizado para: " + novoModelo);
+  const sufixoOrigem = origemBotao ? " (selecionado no botão)" : "";
+  enviarResposta(chatId, "✅ Modelo atualizado para: " + novoModelo + sufixoOrigem);
+}
+
+function montarTecladoModelos_(modelosPermitidos, modeloAtual) {
+  const linhas = modelosPermitidos.map(modelo => {
+    const textoBotao = (modelo === modeloAtual ? '✅ ' : '▫️ ') + modelo;
+    return [{ text: textoBotao, callback_data: 'modelo:' + modelo }];
+  });
+
+  return {
+    inline_keyboard: linhas
+  };
 }
 
 function processarComandoHoje_(chatId) {
@@ -481,7 +589,7 @@ function getTelegramFile(fileId) {
   return `https://api.telegram.org/file/bot${config.TELEGRAM_TOKEN}/${json.result.file_path}`;
 }
 
-function enviarResposta(chatId, texto) {
+function enviarResposta(chatId, texto, replyMarkup) {
   // Validação de entrada
   if (!chatId || !String(chatId).trim()) {
     Logger.log("Aviso: enviarResposta() chamada com chatId inválido");
@@ -500,7 +608,8 @@ function enviarResposta(chatId, texto) {
     contentType: "application/json",
     payload: JSON.stringify({
       chat_id: chatId,
-      text: String(texto).substring(0, 4096)
+      text: String(texto).substring(0, 4096),
+      reply_markup: replyMarkup || undefined
     }),
     muteHttpExceptions: true,
     timeout: 30
@@ -517,6 +626,27 @@ function enviarResposta(chatId, texto) {
   } catch (erro) {
     Logger.log("Erro crítico ao enviar resposta: " + erro.toString());
     return false;
+  }
+}
+
+function responderCallbackQuery_(callbackQueryId) {
+  const config = getConfig_();
+  const url = `https://api.telegram.org/bot${config.TELEGRAM_TOKEN}/answerCallbackQuery`;
+
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      callback_query_id: callbackQueryId
+    }),
+    muteHttpExceptions: true,
+    timeout: 30
+  };
+
+  try {
+    UrlFetchApp.fetch(url, options);
+  } catch (erro) {
+    Logger.log("Erro ao responder callback query: " + erro.toString());
   }
 }
 

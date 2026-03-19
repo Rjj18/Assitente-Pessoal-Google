@@ -149,6 +149,8 @@ Para texto e áudio, o conteúdo é enviado ao Gemini e o retorno é salvo ou di
 
 Comando adicional disponível no Telegram:
 
+- `/cmd`: abre um menu com botões dos comandos operacionais para execução com um toque.
+- `/modelo`: mostra o modelo atual, lista permitida e botões para trocar com um toque (também aceita `/modelo nome-do-modelo`).
 - `/hoje`: gera um resumo do dia com compromissos da agenda e tarefas (hoje + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
 - `/semana`: gera um resumo da semana atual com compromissos da agenda e tarefas (semana + atrasadas), envia no chat e salva como nota em `GENERAL_NOTES_FOLDER_ID`.
 - `/status`: mostra status operacional (modelo atual, throttle, webhook, pendências e consumo Gemini).
