@@ -67,6 +67,17 @@ REGRAS GERAIS:
 - Remova duplicidades sem perder informação.
 - Considere títulos e bullets da captura como sinais de prioridade, mas não como prova suficiente para criar tarefa ou evento sem conteúdo explícito.
 
+MAPEAMENTO DE HASHTAGS PREDEFINIDAS:
+Se encontrar uma destas hashtags no texto, INCLUA-A nas tags_sugeridas e considere a categoria sugerida:
+- #linkedin, #newsletter → categoria "ideias" (compartilhamento reconhecido)
+- #proximo-passo, #milestone, #blocado, #revisar → prioridade HIGH
+- #bug, #feature, #refactor, #pattern → categoria "desenvolvimento"
+- #aprendizado, #artigo, #research → categoria "estudos"
+- #quote, #insight, #decisao, #importante, #urgent, #risco, #habito, #saude, #gratidao, #meta → categoria "ideias"
+
+Se a hashtag está no texto, preserve-a nas tags_sugeridas (ex: ["#linkedin", "#tag2"]).
+Refine a categoria conforme o mapeamento acima, mas mantenha as 5 opções válidas se não encontrar match perfeito.
+
 Texto a ser analisado:
 ${textoMarkdown}`;
 

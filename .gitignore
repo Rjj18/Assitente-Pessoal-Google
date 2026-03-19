@@ -33,3 +33,6 @@ build/
 tmp/
 .tmp/
 coverage/
+
+# Documentação de referência (não commitada)
+HASHTAGS_SYSTEM.md

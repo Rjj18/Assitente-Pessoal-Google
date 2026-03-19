@@ -229,6 +229,141 @@ function enviarEventosParaCalendar(eventos) {
 // ==================== SALVAMENTO DE NOTAS LIVRES ====================
 
 /**
+ * Mapeamento centralizado de hashtags predefinidas
+ * Ex: '#linkedin' -> { arquivo: 'Linkedin.md', categoria: 'compartilhamento', prioridade: 'normal' }
+ */
+const HASHTAGS_PREDEFINIDAS = {
+  // Compartilhamento
+  'linkedin': { arquivo: 'Linkedin.md', categoria: 'compartilhamento', prioridade: 'normal' },
+  'newsletter': { arquivo: 'Newsletter.md', categoria: 'compartilhamento', prioridade: 'normal' },
+  
+  // Ações
+  'proximo-passo': { arquivo: 'Next-Actions.md', categoria: 'ações', prioridade: 'high' },
+  'milestone': { arquivo: 'Milestones.md', categoria: 'ações', prioridade: 'high' },
+  'blocado': { arquivo: 'Bloqueios.md', categoria: 'ações', prioridade: 'high' },
+  'revisar': { arquivo: 'A-Revisar.md', categoria: 'ações', prioridade: 'normal' },
+  
+  // Conhecimento
+  'aprendizado': { arquivo: 'Aprendizados.md', categoria: 'estudos', prioridade: 'normal' },
+  'artigo': { arquivo: 'Artigos.md', categoria: 'artigos', prioridade: 'normal' },
+  'research': { arquivo: 'Pesquisas.md', categoria: 'estudos', prioridade: 'normal' },
+  'quote': { arquivo: 'Quotes.md', categoria: 'ideias', prioridade: 'normal' },
+  'insight': { arquivo: 'Insights.md', categoria: 'ideias', prioridade: 'normal' },
+  
+  // Tech
+  'bug': { arquivo: 'Bugs.md', categoria: 'desenvolvimento', prioridade: 'high' },
+  'feature': { arquivo: 'Features.md', categoria: 'desenvolvimento', prioridade: 'normal' },
+  'refactor': { arquivo: 'Refatoracoes.md', categoria: 'desenvolvimento', prioridade: 'normal' },
+  'pattern': { arquivo: 'Design-Patterns.md', categoria: 'desenvolvimento', prioridade: 'normal' },
+  
+  // Decisões
+  'decisao': { arquivo: 'Decisoes.md', categoria: 'ideias', prioridade: 'high' },
+  'importante': { arquivo: 'Importantes.md', categoria: 'ideias', prioridade: 'high' },
+  'urgent': { arquivo: 'Urgente.md', categoria: 'ideias', prioridade: 'high' },
+  'risco': { arquivo: 'Riscos.md', categoria: 'ideias', prioridade: 'high' },
+  
+  // Pessoal
+  'habito': { arquivo: 'Habitos.md', categoria: 'ideias', prioridade: 'normal' },
+  'saude': { arquivo: 'Saude.md', categoria: 'ideias', prioridade: 'normal' },
+  'gratidao': { arquivo: 'Gratidao.md', categoria: 'ideias', prioridade: 'normal' },
+  'meta': { arquivo: 'Metas.md', categoria: 'ideias', prioridade: 'normal' }
+};
+
+/**
+ * Obtém o arquivo correspondente para uma hashtag predefinida.
+ * @param {string} hashtag Hashtag sem '#' (ex: 'linkedin', 'bug').
+ * @return {string|null} Nome do arquivo ou null se não encontrado.
+ */
+function obterNomeArquivoParaHashtag_(hashtag) {
+  const tagLimpa = String(hashtag || '').toLowerCase().trim().replace('#', '');
+  const config = HASHTAGS_PREDEFINIDAS[tagLimpa] || null;
+  return config ? config.arquivo : null;
+}
+
+/**
+ * Extrai hashtags de uma nota e retorna lista de arquivos de destino.
+ * @param {Array} tagssugeridas Array de tags (ex: ['#linkedin', '#importante']).
+ * @return {Array} Array de nomes de arquivo para salvar a nota.
+ */
+function extrairArquivosDeHashtags_(tags_sugeridas) {
+  const arquivos = new Set();
+  
+  if (!tags_sugeridas || tags_sugeridas.length === 0) {
+    return [];
+  }
+  
+  tags_sugeridas.forEach(tag => {
+    const tagLimpa = String(tag || '').toLowerCase().trim().replace('#', '');
+    const nomeArquivo = obterNomeArquivoParaHashtag_(tagLimpa);
+    if (nomeArquivo) {
+      arquivos.add(nomeArquivo);
+    }
+  });
+  
+  return Array.from(arquivos);
+}
+
+/**
+ * Salva uma nota em um arquivo de hashtag específico.
+ * @param {Folder} pastaNotas Pasta de notas.
+ * @param {string} nomeArquivo Nome do arquivo de destino.
+ * @param {Object} nota Objeto com titulo, conteudo, tags_sugeridas.
+ * @param {string} timestamp Timestamp da captura.
+ */
+function salvarNotaEmArquivoEspecifico_(pastaNotas, nomeArquivo, nota, timestamp) {
+  try {
+    const nomeArquivoSanitizado = sanitizarNomeArquivo(nomeArquivo);
+    
+    // Tenta buscar arquivo existente
+    const arquivosExistentes = pastaNotas.getFilesByName(nomeArquivoSanitizado);
+    let arquivo;
+    let conteudoAtual = '';
+    
+    if (arquivosExistentes.hasNext()) {
+      arquivo = arquivosExistentes.next();
+      conteudoAtual = arquivo.getBlob().getDataAsString();
+    }
+    
+    // Monta novo conteúdo
+    let novoConteudo = conteudoAtual;
+    if (!novoConteudo) {
+      // Extrai título do arquivo (remove .md)
+      const nomeArquivoLimpo = nomeArquivoSanitizado.replace('.md', '').replace('-', ' ');
+      novoConteudo = `# ${nomeArquivoLimpo}\n\n`;
+    }
+    
+    // Adiciona entrada com timestamp
+    novoConteudo += `\n---\n## [${timestamp}]\n\n`;
+    novoConteudo += `### ${nota.titulo}\n\n${nota.conteudo}\n\n`;
+    
+    // Adiciona tags se existirem
+    if (nota.tags_sugeridas && nota.tags_sugeridas.length > 0) {
+      const tags = nota.tags_sugeridas
+        .map(tag => String(tag || '').trim())
+        .filter(tag => tag)
+        .map(tag => tag.startsWith('#') ? tag : `#${tag}`)
+        .join(' ');
+      
+      if (tags) {
+        novoConteudo += `**Tags:** ${tags}\n\n`;
+      }
+    }
+    
+    // Salva ou atualiza arquivo
+    if (arquivo) {
+      arquivo.setContent(novoConteudo);
+      Logger.log("[ORGANIZADOR] Atualizado " + nomeArquivoSanitizado + " com nota: " + nota.titulo);
+    } else {
+      pastaNotas.createFile(nomeArquivoSanitizado, novoConteudo, MimeType.PLAIN_TEXT);
+      Logger.log("[ORGANIZADOR] Criado " + nomeArquivoSanitizado + " com nota: " + nota.titulo);
+    }
+    
+  } catch (erro) {
+    Logger.log("[ORGANIZADOR] Erro ao salvar em arquivo de hashtag '" + nomeArquivo + "': " + erro.toString());
+  }
+}
+
+/**
  * Sanitiza nome de arquivo removendo caracteres inválidos.
  * @param {string} nome Nome original.
  * @return {string} Nome sanitizado.
@@ -239,8 +374,9 @@ function sanitizarNomeArquivo(nome) {
 
 /**
  * Salva notas livres agrupadas por categoria na pasta GENERAL_NOTES.
- * @param {Array} notas Array de objetos {titulo, conteudo, categoria}.
- * @return {number} Número de notas salvas.
+ * Também salva em arquivos específicos se a nota contém hashtags predefinidas.
+ * @param {Array} notas Array de objetos {titulo, conteudo, categoria, tags_sugeridas}.
+ * @return {number} Número de notas salvas (contagem na categoria padrão).
  */
 function salvarNotasLivres(notas) {
   if (!notas || notas.length === 0) {
@@ -297,6 +433,7 @@ function salvarNotasLivres(notas) {
       novoConteudo += `\n---\n## [${timestamp}]\n\n`;
       notasDaCategoria.forEach(nota => {
         novoConteudo += `### ${nota.titulo}\n\n${nota.conteudo}\n\n`;
+        
         // Adiciona tags sugeridas se existirem
         if (nota.tags_sugeridas && nota.tags_sugeridas.length > 0) {
           const tags = nota.tags_sugeridas
@@ -306,9 +443,16 @@ function salvarNotasLivres(notas) {
             .join(' ');
 
           if (tags) {
-          novoConteudo += `**Tags:** ${tags}\n\n`;
+            novoConteudo += `**Tags:** ${tags}\n\n`;
           }
+          
+          // NOVO: Verificar hashtags predefinidas e salvar em arquivos específicos
+          const arquivosHashtag = extrairArquivosDeHashtags_(nota.tags_sugeridas);
+          arquivosHashtag.forEach(nomeArquivoHashtag => {
+            salvarNotaEmArquivoEspecifico_(pastaNotas, nomeArquivoHashtag, nota, timestamp);
+          });
         }
+        
         contador++;
       });
       
